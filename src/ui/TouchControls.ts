@@ -22,8 +22,11 @@ const UI_DEPTH = 1200;
 
 /**
  * Camera-fixed joystick (bottom-left) and buttons.
- * Shown only on touch-capable devices. After pointerdown on the stick, the
- * Phaser pointer id is captured so the thumb keeps tracking outside the base.
+ * Shown only on touch-capable devices.
+ *
+ * Hit areas must be centered on (radius, radius): Phaser translates the pointer
+ * into object space then adds displayOrigin before Circle.Contains. A hit area
+ * at (0, 0) therefore misses the visual center (common cause of "dead" ATK/E).
  */
 export class TouchControls {
   readonly enabled: boolean;
@@ -38,10 +41,10 @@ export class TouchControls {
     menu: false,
   };
   private stickPointerId: number | null = null;
-  private domPointerId: number | null = null;
   private baseX = 0;
   private baseY = 0;
-  private maxTravel = 24;
+  private baseRadius = 36;
+  private maxTravel = 28;
   private thumb?: Phaser.GameObjects.Arc;
   private held = new Map<number, HeldButton>();
 
@@ -54,19 +57,19 @@ export class TouchControls {
     const h = scene.scale.height;
     this.baseX = 64;
     this.baseY = h - 62;
-    this.maxTravel = 24;
+    this.baseRadius = 36;
+    this.maxTravel = 28;
 
-    const base = scene.add.circle(this.baseX, this.baseY, 36, 0x8ea4bc, 0.32);
+    const base = scene.add.circle(this.baseX, this.baseY, this.baseRadius, 0x8ea4bc, 0.32);
     base.setStrokeStyle(2, 0xffffff, 0.5);
     base.setScrollFactor(0);
     base.setDepth(UI_DEPTH);
-    // Hit radius is larger than the painted base so a thumb can grab it easily.
-    base.setInteractive(new Phaser.Geom.Circle(0, 0, 50), Phaser.Geom.Circle.Contains);
+    // Hit radius > paint radius; center at (r, r) after Phaser's origin normalization.
+    enableCircleHit(base, this.baseRadius, 52);
     base.setData('touchUi', 'stick');
     base.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (this.stickPointerId !== null) return;
       this.stickPointerId = pointer.id;
-      this.captureDomPointer(pointer);
       this.placeThumb(pointer.x, pointer.y);
     });
 
@@ -74,13 +77,13 @@ export class TouchControls {
     this.thumb.setStrokeStyle(2, 0xffffff, 0.85);
     this.thumb.setScrollFactor(0);
     this.thumb.setDepth(UI_DEPTH + 1);
+    // Thumb must not steal hits from the stick base.
+    this.thumb.disableInteractive();
 
-    this.makeButton(w - 46, h - 56, 28, 'ATK', 10, 0xb42323, 'attack');
-    this.makeButton(w - 108, h - 40, 20, 'E', 13, 0xc4922a, 'interact');
-    this.makeButton(w - 68, 20, 16, 'R', 12, 0x163044, 'restart');
-    this.makeButton(w - 24, 20, 16, '☰', 14, 0x163044, 'menu');
-
-    scene.events.once('shutdown', () => this.releaseDomCapture());
+    this.makeButton(w - 48, h - 58, 30, 'ATK', 11, 0xb42323, 'attack', 40);
+    this.makeButton(w - 112, h - 42, 24, 'E', 14, 0xc4922a, 'interact', 36);
+    this.makeButton(w - 68, 22, 18, 'R', 12, 0x163044, 'restart', 28);
+    this.makeButton(w - 24, 22, 18, '☰', 14, 0x163044, 'menu', 28);
   }
 
   /** Move vector in [-1, 1] plus one-frame edges for ATK / E / R / menu. */
@@ -110,13 +113,15 @@ export class TouchControls {
     fontSize: number,
     fill: number,
     edge: EdgeName,
+    hitRadius: number,
   ): void {
     const idleAlpha = 0.78;
     const circle = this.scene.add.circle(x, y, radius, fill, idleAlpha);
     circle.setStrokeStyle(2, 0xffffff, 0.7);
     circle.setScrollFactor(0);
-    circle.setDepth(UI_DEPTH + 2);
-    circle.setInteractive(new Phaser.Geom.Circle(0, 0, radius), Phaser.Geom.Circle.Contains);
+    // Interactive circle above the label so topOnly never skips the hit target.
+    circle.setDepth(UI_DEPTH + 4);
+    enableCircleHit(circle, radius, hitRadius);
     circle.setData('touchUi', edge);
     circle.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       // Edge, same idea as Keyboard.JustDown — holding does not repeat.
@@ -149,7 +154,7 @@ export class TouchControls {
   private syncButtons(): void {
     if (this.held.size === 0) return;
     const pointers = this.scene.input.manager.pointers;
-    for (const [id, btn] of this.held) {
+    for (const [id, btn] of [...this.held]) {
       const pointer = pointers[id];
       if (pointer?.isDown) continue;
       if (btn.circle.active) btn.circle.setFillStyle(btn.fill, btn.idleAlpha);
@@ -167,7 +172,7 @@ export class TouchControls {
       this.thumb.setPosition(this.baseX + rawX * clamp, this.baseY + rawY * clamp);
     }
 
-    const dead = max * 0.2;
+    const dead = max * 0.18;
     if (dist <= dead || dist === 0) {
       this.moveX = 0;
       this.moveY = 0;
@@ -183,37 +188,23 @@ export class TouchControls {
     this.moveX = 0;
     this.moveY = 0;
     if (this.thumb?.active) this.thumb.setPosition(this.baseX, this.baseY);
-    this.releaseDomCapture();
   }
+}
 
-  /**
-   * DOM setPointerCapture when the event is a PointerEvent.
-   * Touch Events have no pointerId; Phaser still delivers touchmove to the
-   * captured pointer id after the finger leaves the stick.
-   */
-  private captureDomPointer(pointer: Phaser.Input.Pointer): void {
-    const native = pointer.event as Event | undefined;
-    if (!native || !('pointerId' in native)) return;
-    const pointerId = (native as PointerEvent).pointerId;
-    try {
-      this.scene.game.canvas.setPointerCapture(pointerId);
-      this.domPointerId = pointerId;
-    } catch {
-      this.domPointerId = null;
-    }
-  }
-
-  private releaseDomCapture(): void {
-    if (this.domPointerId === null) return;
-    const id = this.domPointerId;
-    this.domPointerId = null;
-    try {
-      const canvas = this.scene.game.canvas;
-      if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
-    } catch {
-      /* pointer already released */
-    }
-  }
+/**
+ * Phaser hit-tests in local space AFTER adding displayOrigin.
+ * For a circle of paint radius `radius` (origin 0.5), the visual center is
+ * therefore (radius, radius) in hit-area space — not (0, 0).
+ */
+function enableCircleHit(
+  circle: Phaser.GameObjects.Arc,
+  radius: number,
+  hitRadius: number,
+): void {
+  circle.setInteractive(
+    new Phaser.Geom.Circle(radius, radius, hitRadius),
+    Phaser.Geom.Circle.Contains,
+  );
 }
 
 /** Touch screen, coarse pointer, or Phaser's own touch flag. */
