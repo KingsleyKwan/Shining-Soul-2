@@ -1,0 +1,10 @@
+*.local
+.DS_Store
+.vite/
+dist/
+node_modules/
+tools/*.png
+tools/eric_hurt/
+tools/frames/
+tools/gully/
+tools/paste/
