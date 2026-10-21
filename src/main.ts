@@ -11,6 +11,12 @@ const config: Phaser.Types.Core.GameConfig = {
   backgroundColor: '#1a2a1a',
   pixelArt: true,
   roundPixels: true,
+  // Long-press on the stick should not open the browser menu.
+  disableContextMenu: true,
+  input: {
+    // Pointer 0 is the mouse. Touches use 1..N — stick + ATK + E need three.
+    activePointers: 4,
+  },
   physics: {
     default: 'arcade',
     arcade: {

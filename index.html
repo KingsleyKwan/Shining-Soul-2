@@ -2,11 +2,20 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Shining Soul II — Learning Prototype / 光明之魂2 学习原型</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body, #app, canvas {
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        overscroll-behavior: none;
+      }
       html, body {
+        position: fixed;
+        inset: 0;
         width: 100%;
         height: 100%;
         background: #0b0f14;
@@ -20,6 +29,11 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        padding:
+          env(safe-area-inset-top)
+          env(safe-area-inset-right)
+          env(safe-area-inset-bottom)
+          env(safe-area-inset-left);
       }
       canvas {
         display: block;

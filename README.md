@@ -41,6 +41,9 @@ python3 tools/gen_placeholder_audio.py
 
 ## Controls / 操作
 
+Desktop keys are unchanged. Touch controls appear only on touch-capable devices (joystick + buttons, fixed to the screen). Keyboard and touch can be used together.
+桌面键位不变。可触屏时才显示摇杆和按钮（不随镜头滚动）。两者可同时使用。
+
 ### Character select / 选角（SelectScene）
 
 | Input / 按键 | Action / 作用 |
@@ -48,10 +51,10 @@ python3 tools/gen_placeholder_audio.py
 | **1** | Eric（Warrior） |
 | **2** | Prim（Priestess） |
 | **3** | Raizen（Ninja） |
-| **Click** card | Select + start / 点选并进入地牢 |
+| **Tap / Click** card | Select + start / 点选或点击并进入地牢 |
 | **Enter** / **Space** | Confirm selected class / 确认当前高亮角色 |
 
-### In dungeon / 地牢内（GameScene）
+### In dungeon — desktop / 地牢内（键盘）
 
 | Input / 按键 | Action / 作用 |
 |--------------|---------------|
@@ -60,10 +63,25 @@ python3 tools/gen_placeholder_audio.py
 | **E**（near chest） | Open Room B chest / 开 B 房宝箱 |
 | **Space**（when chest prompt shows） | Same as **E** / 有提示时等同开箱（不挥刀） |
 | Walk into **door** | Fade + teleport to other room / 淡入淡出传送 |
-| **M** | Mute / unmute SFX + BGM / 静音开关 |
+| **M** | Mute / unmute SFX + BGM / 静音开关（键盘） |
 | **R** | Restart dungeon（same class）/ 重开地牢（保留职业） |
 | **Esc** | Back to character select / 返回选角 |
-| Click（on GAME OVER） | Restart / 游戏结束后点击重开 |
+| Click / tap（on GAME OVER） | Restart / 游戏结束后点击或点按重开 |
+
+### Mobile touch / 触屏
+
+Shown when the device reports touch (`maxTouchPoints`, a coarse pointer, or Phaser touch). Hidden on desktop-only browsers.
+仅在可触屏时显示；纯桌面浏览器不显示。
+
+| Control / 控件 | Action / 作用 |
+|----------------|---------------|
+| Joystick（bottom-left / 左下） | Move / 移动（松开归零，拖出底盘仍有效） |
+| **ATK**（bottom-right / 右下） | Attack / 攻击（同 Space / Z，点按一次） |
+| **E**（beside ATK / 攻击键旁） | Open chest / 开箱（同键盘 E） |
+| **R**（top-right / 右上） | Restart / 重开 |
+| **☰** | Back to select / 返回选角（同 Esc） |
+
+Mute stays on the **M** key / 静音仍用 **M** 键。
 
 ---
 
@@ -112,8 +130,8 @@ Each has walk + attack + hurt + death anims from their atlas（各有行走／�
 
 - Placeholder procedural OGG/WAV（not SS2 rips）: slash, hit, chest, door, hurt, boss defeat, looping soft BGM  
   程序生成占位音效／BGM（非原作扒曲）
-- **M** mutes; browsers may need one click/key before BGM (autoplay)  
-  **M** 静音；部分浏览器需先点一下才播 BGM
+- **M** mutes; browsers may need one tap, click, or key before BGM (autoplay)  
+  **M** 静音；部分浏览器需先点一下或按键才播 BGM
 
 ---
 
@@ -160,6 +178,8 @@ shining-soul-2-web/
     ├── heroes.ts             # Eric / Prim / Raizen stats
     ├── audio/GameAudio.ts
     ├── ai/TilePathfinder.ts  # grid A* + PathFollower
+    ├── input/InputState.ts   # keyboard (if any) + touch → one frame
+    ├── ui/TouchControls.ts   # on-screen stick + ATK / E / R / ☰
     ├── scenes/
     │   ├── BootScene.ts
     │   ├── SelectScene.ts
@@ -213,4 +233,4 @@ After push to `main`, GitHub Actions builds `dist/` and deploys Pages.
 
 Repo → Settings → Pages → Source: **GitHub Actions**（若尚未开启）.
 
-First visit may need a click for audio (browser autoplay).
+First visit may need a tap or click for audio (browser autoplay).

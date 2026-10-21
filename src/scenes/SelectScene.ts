@@ -101,7 +101,7 @@ export class SelectScene extends Phaser.Scene {
     });
 
     this.add
-      .text(width / 2, height - 36, '1 / 2 / 3  or click  ·  Enter / Space to start', {
+      .text(width / 2, height - 36, '1 / 2 / 3 · tap card / 点选 · Enter / Space', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#c8e8c8',
