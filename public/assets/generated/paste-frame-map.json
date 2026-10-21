@@ -1,0 +1,63 @@
+{
+  "source": "paste.png (Claire Starsword / The Spriters Resource)",
+  "chroma": "multi: yellow-green + neon green + magenta bands, tol=45",
+  "band": {
+    "y0": 1,
+    "y1": 31,
+    "palette_row": 0
+  },
+  "walk_idx": [
+    0,
+    1,
+    2
+  ],
+  "hurt_idx": [
+    23,
+    22,
+    28
+  ],
+  "boxes": {
+    "walk_0": {
+      "x0": 4,
+      "y0": 3,
+      "x1": 28,
+      "y1": 24
+    },
+    "walk_1": {
+      "x0": 35,
+      "y0": 7,
+      "x1": 61,
+      "y1": 24
+    },
+    "walk_2": {
+      "x0": 71,
+      "y0": 1,
+      "x1": 91,
+      "y1": 25
+    },
+    "hurt_0": {
+      "x0": 737,
+      "y0": 10,
+      "x1": 764,
+      "y1": 27
+    },
+    "hurt_1": {
+      "x0": 712,
+      "y0": 4,
+      "x1": 731,
+      "y1": 28
+    },
+    "hurt_2": {
+      "x0": 896,
+      "y0": 12,
+      "x1": 925,
+      "y1": 30
+    },
+    "idle_0": {
+      "x0": 4,
+      "y0": 3,
+      "x1": 28,
+      "y1": 24
+    }
+  }
+}
