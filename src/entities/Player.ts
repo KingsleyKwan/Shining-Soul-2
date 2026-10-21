@@ -2,16 +2,15 @@ import Phaser from 'phaser';
 import { GameAudio } from '../audio/GameAudio';
 import { getHero, type HeroDef } from '../heroes';
 
-export type MoveKeys = {
-  up: Phaser.Input.Keyboard.Key;
-  down: Phaser.Input.Keyboard.Key;
-  left: Phaser.Input.Keyboard.Key;
-  right: Phaser.Input.Keyboard.Key;
-};
-
 export type Facing = 'down' | 'up' | 'left' | 'right';
 
-const ATTACK_MOVE_FACTOR = 0.15;
+/** Move in [-1, 1] plus an attack edge. Keyboard and touch both feed this. */
+export type PlayerInput = {
+  moveX: number;
+  moveY: number;
+  attackPressed: boolean;
+};
+
 const HITBOX_LIFE_MS = 200;
 const HITBOX_W = 28;
 const HITBOX_H = 28;
@@ -37,10 +36,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private dying = false;
   private iframeUntil = 0;
   private stunUntil = 0;
-  private attackKeys!: {
-    space: Phaser.Input.Keyboard.Key;
-    z: Phaser.Input.Keyboard.Key;
-  };
   private hitbox?: Phaser.GameObjects.Zone;
   private onHitboxSpawn?: (zone: Phaser.GameObjects.Zone) => void;
   private onHpChange?: (hp: number, maxHp: number) => void;
@@ -65,14 +60,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const body = this.body as Phaser.Physics.Arcade.Body;
     body.setSize(12, 14);
     body.setOffset(5, 12);
-
-    if (!scene.input.keyboard) {
-      throw new Error('Keyboard required');
-    }
-    this.attackKeys = {
-      space: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
-      z: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z),
-    };
 
     this.on('animationcomplete', this.onAnimComplete, this);
   }
@@ -194,11 +181,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.play(this.ak('death'), false);
   }
 
-  handleInput(
-    cursors: Phaser.Types.Input.Keyboard.CursorKeys,
-    wasd: MoveKeys,
-    _delta: number,
-  ): void {
+  handleInput(input: PlayerInput, _delta: number): void {
     if (this.dead || this.dying) {
       this.setVelocity(0, 0);
       return;
@@ -216,36 +199,23 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     if (this.skipAttackOnce) {
       this.skipAttackOnce = false;
-    } else {
-      const wantAttack =
-        Phaser.Input.Keyboard.JustDown(this.attackKeys.space) ||
-        Phaser.Input.Keyboard.JustDown(this.attackKeys.z);
-
-      if (wantAttack && !this.attacking) {
-        this.startAttack();
-      }
+    } else if (input.attackPressed && !this.attacking) {
+      this.startAttack();
     }
 
+    const ix = input.moveX;
+    const iy = input.moveY;
     let vx = 0;
     let vy = 0;
 
-    if (!this.attacking) {
-      if (cursors.left.isDown || wasd.left.isDown) vx -= 1;
-      if (cursors.right.isDown || wasd.right.isDown) vx += 1;
-      if (cursors.up.isDown || wasd.up.isDown) vy -= 1;
-      if (cursors.down.isDown || wasd.down.isDown) vy += 1;
-    } else {
-      if (cursors.left.isDown || wasd.left.isDown) vx -= ATTACK_MOVE_FACTOR;
-      if (cursors.right.isDown || wasd.right.isDown) vx += ATTACK_MOVE_FACTOR;
-      if (cursors.up.isDown || wasd.up.isDown) vy -= ATTACK_MOVE_FACTOR;
-      if (cursors.down.isDown || wasd.down.isDown) vy += ATTACK_MOVE_FACTOR;
-    }
-
-    if (vx !== 0 || vy !== 0) {
-      const len = Math.hypot(vx, vy) || 1;
-      const speed = this.attacking ? this.moveSpeed * 0.35 : this.moveSpeed;
-      vx = (vx / len) * speed;
-      vy = (vy / len) * speed;
+    if (ix !== 0 || iy !== 0) {
+      const len = Math.hypot(ix, iy) || 1;
+      // Full key deflection is length 1 or √2 → speed unchanged vs digital input.
+      // A partial stick scales speed by its magnitude.
+      const mag = Math.min(1, len);
+      const speed = (this.attacking ? this.moveSpeed * 0.35 : this.moveSpeed) * mag;
+      vx = (ix / len) * speed;
+      vy = (iy / len) * speed;
 
       if (!this.attacking) {
         this.updateFacing(vx, vy);

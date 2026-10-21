@@ -5,6 +5,8 @@ import { Boss } from '../entities/Boss';
 import { TilePathfinder } from '../ai/TilePathfinder';
 import { GameAudio, AUDIO_REGISTRY_KEY } from '../audio/GameAudio';
 import { getHero, SELECTED_HERO_KEY } from '../heroes';
+import { InputState } from '../input/InputState';
+import { TouchControls } from '../ui/TouchControls';
 
 /** Anything the player slash can damage. */
 type Hostile = Enemy | Boss;
@@ -23,13 +25,9 @@ export class GameScene extends Phaser.Scene {
   private enemies!: Phaser.GameObjects.Group;
   private boss?: Boss;
   private hostiles!: Phaser.GameObjects.Group;
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd!: {
-    up: Phaser.Input.Keyboard.Key;
-    down: Phaser.Input.Keyboard.Key;
-    left: Phaser.Input.Keyboard.Key;
-    right: Phaser.Input.Keyboard.Key;
-  };
+  private touch!: TouchControls;
+  private inputState!: InputState;
+  private leaving = false;
   private hitThisSwing = new Set<Hostile>();
   private hpHud!: Phaser.GameObjects.Text;
   private roomHud!: Phaser.GameObjects.Text;
@@ -40,8 +38,6 @@ export class GameScene extends Phaser.Scene {
   private chestGfx?: Phaser.GameObjects.Graphics;
   private chestLabel?: Phaser.GameObjects.Text;
   private chestPrompt?: Phaser.GameObjects.Text;
-  private interactKey!: Phaser.Input.Keyboard.Key;
-  private spaceKey!: Phaser.Input.Keyboard.Key;
   private gameOver = false;
   private bossDefeated = false;
   private transitioning = false;
@@ -72,6 +68,7 @@ export class GameScene extends Phaser.Scene {
     this.currentRoom = 'a';
     this.chestOpened = false;
     this.gold = 0;
+    this.leaving = false;
 
     const map = this.make.tilemap({ key: 'dungeon-room' });
     const tileset = map.addTilesetImage('dungeon-tiles', 'dungeon-tiles');
@@ -142,20 +139,15 @@ export class GameScene extends Phaser.Scene {
 
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
 
-    if (!this.input.keyboard) {
-      throw new Error('Keyboard input is required for this prototype');
-    }
+    this.touch = new TouchControls(this);
+    this.inputState = new InputState(this);
 
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.wasd = {
-      up: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-      down: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-      left: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-      right: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
-    };
+    const help = this.touch.enabled
+      ? 'Stick/WASD · ATK · E chest · R · ☰/Esc'
+      : 'WASD · Space/Z · E chest · M mute · R restart · Esc select';
 
     this.add
-      .text(8, 8, 'WASD · Space/Z · E chest · M mute · R restart · Esc select', {
+      .text(8, 8, help, {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#d8e8d8',
@@ -212,8 +204,6 @@ export class GameScene extends Phaser.Scene {
       .setDepth(100);
     this.refreshGoldHud();
 
-    this.interactKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.chestPrompt = this.add
       .text(0, 0, 'E / Space — Open', {
         fontFamily: 'monospace',
@@ -239,16 +229,14 @@ export class GameScene extends Phaser.Scene {
     this.refreshMuteHud();
 
     this.audio.startBgm();
-    // Unlock / resume after first gesture (browser autoplay policy)
+    // Unlock / resume after the first gesture (browser autoplay policy).
+    // Pointer covers taps; keyboard is optional and skipped when the plugin is absent.
     this.input.once('pointerdown', () => this.audio.ensurePlaying());
-    this.input.keyboard.once('keydown', () => this.audio.ensurePlaying());
-
-    this.input.keyboard.on('keydown-M', () => {
+    this.input.keyboard?.once('keydown', () => this.audio.ensurePlaying());
+    this.input.keyboard?.on('keydown-M', () => {
       this.audio.toggleMute();
       this.refreshMuteHud();
     });
-    this.input.keyboard.on('keydown-R', () => this.scene.restart());
-    this.input.keyboard.on('keydown-ESC', () => this.scene.start('SelectScene'));
   }
 
   private refreshMuteHud(): void {
@@ -258,10 +246,33 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    this.inputState.update(this.touch.poll());
+
+    if (this.inputState.restartPressed) {
+      this.restartRun();
+      return;
+    }
+    if (this.inputState.menuPressed) {
+      this.backToSelect();
+      return;
+    }
+
     if (!this.gameOver && !this.transitioning) {
       this.updateChestInteract();
-      this.player.handleInput(this.cursors, this.wasd, delta);
+      this.player.handleInput(this.inputState, delta);
     }
+  }
+
+  private restartRun(): void {
+    if (this.leaving) return;
+    this.leaving = true;
+    this.scene.restart();
+  }
+
+  private backToSelect(): void {
+    if (this.leaving) return;
+    this.leaving = true;
+    this.scene.start('SelectScene');
   }
 
   private spawnPaste(
@@ -351,10 +362,8 @@ export class GameScene extends Phaser.Scene {
     }
     if (!near || this.chestOpened) return;
 
-    const pressE = Phaser.Input.Keyboard.JustDown(this.interactKey);
-    const pressSpace = Phaser.Input.Keyboard.JustDown(this.spaceKey);
-    if (pressE || pressSpace) {
-      if (pressSpace) this.player.suppressNextAttack();
+    if (this.inputState.interactPressed) {
+      if (this.inputState.spacePressed) this.player.suppressNextAttack();
       this.openChest();
     }
   }
@@ -520,7 +529,7 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(201);
     const hint = this.add
-      .text(width / 2, height / 2 + 14, 'Press R or click to restart', {
+      .text(width / 2, height / 2 + 14, 'Press R or tap to restart', {
         fontFamily: 'monospace',
         fontSize: '11px',
         color: '#e8eef5',
@@ -530,7 +539,14 @@ export class GameScene extends Phaser.Scene {
       .setDepth(201);
 
     this.add.container(0, 0, [bg, title, hint]).setDepth(200);
-    this.input.once('pointerdown', () => this.scene.restart());
+    // Tap the overlay to restart. The ☰ button still returns to select, same as Esc.
+    this.input.once(
+      'pointerdown',
+      (_pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
+        if (over?.[0]?.getData('touchUi') === 'menu') return;
+        this.restartRun();
+      },
+    );
   }
 
   private propString(
