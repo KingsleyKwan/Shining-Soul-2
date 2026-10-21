@@ -200,3 +200,17 @@ Ideas only — not implemented yet.
 Greenfield learning prototype on your own machine. Do **not** redistribute copyrighted sprite or audio packs commercially.
 
 本机绿色学习原型。**禁止**将受版权保护的精灵／音频打包作商业分发。
+
+---
+
+## GitHub Pages / 线上试玩
+
+After push to `main`, GitHub Actions builds `dist/` and deploys Pages.
+
+推到 `main` 后 Actions 会构建并部署。预计地址：
+
+**https://kingsleykwan.github.io/Shining-Soul-2/**
+
+Repo → Settings → Pages → Source: **GitHub Actions**（若尚未开启）.
+
+First visit may need a click for audio (browser autoplay).
