@@ -1,15 +1,15 @@
-# Shining Soul II Web Prototype / 光明之魂2 网页学习原型
+# Shining Soul II Web Prototype / 光明之魂2 網頁學習原型
 
 Personal / fan **learning** remake of **GBA Shining Soul II（光明之魂2）** with **Phaser 3 + Vite + TypeScript**.
 
-个人／粉丝向 **学习用** 重制原型（Phaser 3 + Vite + TypeScript）。**非商业**；仅供本机学习，请勿打包发行受版权保护的素材包。
+個人／粉絲向 **學習用** 重製原型（Phaser 3 + Vite + TypeScript）。**非商業**；僅供本機學習，請勿打包發行受版權保護的素材包。
 
 > Shining Soul II © SEGA / original rights holders.  
-> 光明之魂2 版权归 SEGA 及原权利方所有。本仓库为绿色学习原型，不附带 ROM。
+> 光明之魂2 版權歸 SEGA 及原權利方所有。本倉庫為綠色學習原型，不附帶 ROM。
 
 ---
 
-## How to run / 如何运行
+## How to run / 如何運行
 
 ```bash
 cd shining-soul-2-web   # or /workspace/shining-soul-2-web
@@ -18,14 +18,14 @@ npm run dev
 ```
 
 Open the URL Vite prints (default **http://localhost:5173**).  
-浏览器打开终端里 Vite 打印的地址（默认 **http://localhost:5173**）。
+瀏覽器打開終端裏 Vite 打印的地址（預設 **http://localhost:5173**）。
 
 ```bash
 npm run build    # production → dist/
 npm run preview  # serve dist/
 ```
 
-Optional asset regen（可选资源重切）:
+Optional asset regen（可選資源重切）:
 
 ```bash
 python3 tools/extract_eric.py
@@ -42,53 +42,53 @@ python3 tools/gen_placeholder_audio.py
 ## Controls / 操作
 
 Desktop keys are unchanged. Touch controls appear only on touch-capable devices (joystick + buttons, fixed to the screen). Keyboard and touch can be used together.
-桌面键位不变。可触屏时才显示摇杆和按钮（不随镜头滚动）。两者可同时使用。
+桌面鍵位不變。可觸屏時才顯示搖桿和按鈕（不隨鏡頭滾動）。兩者可同時使用。
 
-### Character select / 选角（SelectScene）
+### Character select / 選角（SelectScene）
 
-| Input / 按键 | Action / 作用 |
+| Input / 按鍵 | Action / 作用 |
 |--------------|---------------|
 | **1** | Eric（Warrior） |
 | **2** | Prim（Priestess） |
 | **3** | Raizen（Ninja） |
-| **Tap / Click** card | Select + start / 点选或点击并进入地牢 |
-| **Enter** / **Space** | Confirm selected class / 确认当前高亮角色 |
+| **Tap / Click** card | Select + start / 點選或點擊並進入地牢 |
+| **Enter** / **Space** | Confirm selected class / 確認當前高亮角色 |
 
-### In dungeon — desktop / 地牢内（键盘）
+### In dungeon — desktop / 地牢內（鍵盤）
 
-| Input / 按键 | Action / 作用 |
+| Input / 按鍵 | Action / 作用 |
 |--------------|---------------|
-| **WASD** / **Arrow keys** | Move / 四向移动 |
-| **Space** / **Z** | Attack (short hitbox) / 攻击（短判定框） |
-| **E**（near chest） | Open Room B chest / 开 B 房宝箱 |
-| **Space**（when chest prompt shows） | Same as **E** / 有提示时等同开箱（不挥刀） |
-| Walk into **door** | Fade + teleport to other room / 淡入淡出传送 |
-| **M** | Mute / unmute SFX + BGM / 静音开关（键盘） |
-| **R** | Restart dungeon（same class）/ 重开地牢（保留职业） |
-| **Esc** | Back to character select / 返回选角 |
-| Click / tap（on GAME OVER） | Restart / 游戏结束后点击或点按重开 |
+| **WASD** / **Arrow keys** | Move / 四向移動 |
+| **Space** / **Z** | Attack (short hitbox) / 攻擊（短判定框） |
+| **E**（near chest） | Open Room B chest / 開 B 房寶箱 |
+| **Space**（when chest prompt shows） | Same as **E** / 有提示時等同開箱（不揮刀） |
+| Walk into **door** | Fade + teleport to other room / 淡入淡出傳送 |
+| **M** | Mute / unmute SFX + BGM / 靜音開關（鍵盤） |
+| **R** | Restart dungeon（same class）/ 重開地牢（保留職業） |
+| **Esc** | Back to character select / 返回選角 |
+| Click / tap（on GAME OVER） | Restart / 遊戲結束後點擊或點按重開 |
 
-### Mobile touch / 触屏
+### Mobile touch / 觸屏
 
 Shown when the device reports touch (`maxTouchPoints`, a coarse pointer, or Phaser touch). Hidden on desktop-only browsers.
-仅在可触屏时显示；纯桌面浏览器不显示。
+僅在可觸屏時顯示；純桌面瀏覽器不顯示。
 
 | Control / 控件 | Action / 作用 |
 |----------------|---------------|
-| Joystick（bottom-left / 左下） | Move / 移动（松开归零，拖出底盘仍有效） |
-| **ATK**（bottom-right / 右下） | Attack / 攻击（同 Space / Z，点按一次） |
-| **E**（beside ATK / 攻击键旁） | Open chest / 开箱（同键盘 E） |
-| **R**（top-right / 右上） | Restart / 重开 |
-| **☰** | Back to select / 返回选角（同 Esc） |
+| Joystick（bottom-left / 左下） | Move / 移動（鬆開歸零，拖出底盤仍有效） |
+| **ATK**（bottom-right / 右下） | Attack / 攻擊（同 Space / Z，點按一次） |
+| **E**（beside ATK / 攻擊鍵旁） | Open chest / 開箱（同鍵盤 E） |
+| **R**（top-right / 右上） | Restart / 重開 |
+| **☰** | Back to select / 返回選角（同 Esc） |
 
-Mute stays on the **M** key / 静音仍用 **M** 键。
+Mute stays on the **M** key / 靜音仍用 **M** 鍵。
 
 ---
 
-## Current features / 当前功能
+## Current features / 當前功能
 
 Accurate to the code — nothing beyond what is implemented.  
-以下均与现有代码一致，未写未实现内容。
+以下均與現有代碼一致，未寫未實現內容。
 
 ### Flow / 流程
 
@@ -102,57 +102,57 @@ Accurate to the code — nothing beyond what is implemented.
 |-------|----|-------|-------|
 | **Eric** Warrior | 5 | 110 | Balanced / 均衡 |
 | **Prim** Priestess | **7** | 100 | More HP / 更高生命 |
-| **Raizen** Ninja | 4 | **135** | Faster / 更快移动 |
+| **Raizen** Ninja | 4 | **135** | Faster / 更快移動 |
 
-Each has walk + attack + hurt + death anims from their atlas（各有行走／攻击／受伤／死亡动画）.
+Each has walk + attack + hurt + death anims from their atlas（各有行走／攻擊／受傷／死亡動畫）.
 
-### Combat / 战斗
+### Combat / 戰鬥
 
 - Room A: **2× Paste** (HP 3, chase ~150px, melee 1 dmg) + boss **Captain Gully** (HP 14, melee **2** dmg + short lunge)  
-  A 房：2 只 Paste（HP 3）+ Boss 盖利队长（HP 14，伤害 2）
+  A 房：2 隻 Paste（HP 3）+ Boss 蓋利隊長（HP 14，傷害 2）
 - Room B: **1×** weaker Paste (HP 2) + openable chest  
-  B 房：1 只弱 Paste（HP 2）+ 可开宝箱
+  B 房：1 隻弱 Paste（HP 2）+ 可開寶箱
 - Player HP HUD; at 0 → GAME OVER  
-  玩家血量 HUD；归零游戏结束
+  玩家血量 HUD；歸零遊戲結束
 - Pastes / Gully: tile **A\*** pathfinding (~0.4–0.45s repath) around walls/pillars; axis-slide fallback  
-  敌人沿墙格 A* 绕柱，失败则轴向滑动
+  敵人沿牆格 A* 繞柱，失敗則軸向滑動
 
-### World / 地图
+### World / 地圖
 
 - One Tiled map **80×28** @ 16px → **1280×448** (Room A | Room B)  
-  单张双室地图；镜头按房间夹取
+  單張雙室地圖；鏡頭按房間夾取
 - Wall collision on `walls` layer; wooden door tiles + door objects teleport with fade  
-  墙体碰撞；木门传送带淡入淡出
+  牆體碰撞；木門傳送帶淡入淡出
 - Room B chest: once per run → **+2 HP** (capped) + **25 gold** (HUD toast); resets on **R**  
-  宝箱每局一次：回血 + 金币；**R** 重置
+  寶箱每局一次：回血 + 金幣；**R** 重置
 
-### Audio / 音频
+### Audio / 音頻
 
 - Placeholder procedural OGG/WAV（not SS2 rips）: slash, hit, chest, door, hurt, boss defeat, looping soft BGM  
-  程序生成占位音效／BGM（非原作扒曲）
+  程序生成佔位音效／BGM（非原作扒曲）
 - **M** mutes; browsers may need one tap, click, or key before BGM (autoplay)  
-  **M** 静音；部分浏览器需先点一下或按键才播 BGM
+  **M** 靜音；部分瀏覽器需先點一下或按鍵才播 BGM
 
 ---
 
-## Asset credits / 素材致谢
+## Asset credits / 素材致謝
 
 Fan learning only — sheets from [The Spriters Resource](https://www.spriters-resource.com/) (Shining Soul II).  
-仅供粉丝学习，精灵表来自 The Spriters Resource。
+僅供粉絲學習，精靈表來自 The Spriters Resource。
 
 | Asset | Credit |
 |-------|--------|
 | Eric, Prim, Raizen, Paste | **Claire Starsword** |
 | Captain Gully | **darkbolt99** |
-| Dungeon tiles (`dungeon-tiles.png`) | **Original placeholders** (Spriters has no SS2 map tiles) / 自绘占位地砖 |
-| Audio under `public/assets/audio/` | Procedural placeholders (`tools/gen_placeholder_audio.py`) / 程序占位 |
+| Dungeon tiles (`dungeon-tiles.png`) | **Original placeholders** (Spriters has no SS2 map tiles) / 自繪佔位地磚 |
+| Audio under `public/assets/audio/` | Procedural placeholders (`tools/gen_placeholder_audio.py`) / 程序佔位 |
 
 To swap music later: drop GBAMusRippy (or custom) files into `public/assets/audio/` using the **same keys/filenames** (`sfx-slash`, `sfx-hit`, `sfx-chest`, `sfx-door`, `sfx-hurt`, `sfx-boss`, `bgm-dungeon`) — see `src/audio/GameAudio.ts`.  
-日后可用 GBAMusRippy 等替换同名文件，无需改键名。
+日後可用 GBAMusRippy 等替換同名文件，無需改鍵名。
 
 ---
 
-## Project structure / 目录结构
+## Project structure / 目錄結構
 
 ```
 shining-soul-2-web/
@@ -191,46 +191,46 @@ shining-soul-2-web/
 ```
 
 Edit the map in [Tiled](https://www.mapeditor.org/): open `public/assets/maps/dungeon-room.json` (or `.tmj`), paint `walls`, move `spawns` objects, save JSON, refresh Vite.  
-可用 Tiled 编辑地图后刷新即可。
+可用 Tiled 編輯地圖後刷新即可。
 
 ---
 
-## Suggested next ideas / 建议下一步
+## Suggested next ideas / 建議下一步
 
 Ideas only — not implemented yet.  
-仅为想法，下列尚未实现：
+僅為想法，下列尚未實現：
 
 1. More rooms / stairs / simple loot table beyond one chest  
-   更多房间／楼梯／掉落表
+   更多房間／樓梯／掉落表
 2. Distinct Prim / Raizen attack VFX (staff / shuriken feel) while keeping Space/Z  
-   职业差异化攻击表现（仍用 Space/Z）
+   職業差異化攻擊表現（仍用 Space/Z）
 3. Replace placeholder BGM/SFX with GBAMusRippy tracks for personal testing  
-   个人测试用原曲替换占位音频
+   個人測試用原曲替換佔位音頻
 4. Save selected class + gold across **R** (or a soft continue)  
-   跨重开保留职业／金币
+   跨重開保留職業／金幣
 5. Tune attack frame picks / optional 8-dir from the same sheets  
-   微调攻击帧／可选八向
+   微調攻擊幀／可選八向
 6. Wizard / other class sheets if ripped for personal use  
-   其他职业表（仅限个人学习素材）
+   其他職業表（僅限個人學習素材）
 
 ---
 
-## License / 声明
+## License / 聲明
 
 Greenfield learning prototype on your own machine. Do **not** redistribute copyrighted sprite or audio packs commercially.
 
-本机绿色学习原型。**禁止**将受版权保护的精灵／音频打包作商业分发。
+本機綠色學習原型。**禁止**將受版權保護的精靈／音頻打包作商業分發。
 
 ---
 
-## GitHub Pages / 线上试玩
+## GitHub Pages / 線上試玩
 
 After push to `main`, GitHub Actions builds `dist/` and deploys Pages.
 
-推到 `main` 后 Actions 会构建并部署。预计地址：
+推到 `main` 後 Actions 會構建並部署。預計地址：
 
 **https://kingsleykwan.github.io/Shining-Soul-2/**
 
-Repo → Settings → Pages → Source: **GitHub Actions**（若尚未开启）.
+Repo → Settings → Pages → Source: **GitHub Actions**（若尚未開啟）.
 
 First visit may need a tap or click for audio (browser autoplay).
