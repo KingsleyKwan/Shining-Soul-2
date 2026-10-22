@@ -10,12 +10,14 @@ export type TouchFrame = {
   attackHeld: boolean;
   /** ATK just released (edge). */
   attackReleased: boolean;
+  /** 技 just pressed (edge). */
+  skill: boolean;
   interact: boolean;
   restart: boolean;
   menu: boolean;
 };
 
-type EdgeName = 'attack' | 'interact' | 'restart' | 'menu';
+type EdgeName = 'attack' | 'skill' | 'interact' | 'restart' | 'menu';
 
 type HeldButton = {
   circle: Phaser.GameObjects.Arc;
@@ -41,6 +43,7 @@ export class TouchControls {
   private moveY = 0;
   private edges: Record<EdgeName, boolean> = {
     attack: false,
+    skill: false,
     interact: false,
     restart: false,
     menu: false,
@@ -90,11 +93,13 @@ export class TouchControls {
 
     this.makeButton(w - 48, h - 58, 30, 'ATK', 11, 0xb42323, 'attack', 40);
     this.makeButton(w - 112, h - 42, 24, 'E', 14, 0xc4922a, 'interact', 36);
+    // Above E so it does not cover ATK / E / R / ☰.
+    this.makeButton(w - 112, h - 90, 22, '技', 14, 0x4a3aa8, 'skill', 30);
     this.makeButton(w - 68, 22, 18, 'R', 12, 0x163044, 'restart', 28);
     this.makeButton(w - 24, 22, 18, '☰', 14, 0x163044, 'menu', 28);
   }
 
-  /** Move vector in [-1, 1] plus one-frame edges for ATK / E / R / menu. */
+  /** Move vector in [-1, 1] plus one-frame edges for ATK / 技 / E / R / menu. */
   poll(): TouchFrame {
     this.syncStick();
     this.syncButtons();
@@ -104,11 +109,13 @@ export class TouchControls {
       attack: this.edges.attack,
       attackHeld: this.attackHeld,
       attackReleased: this.attackReleased,
+      skill: this.edges.skill,
       interact: this.edges.interact,
       restart: this.edges.restart,
       menu: this.edges.menu,
     };
     this.edges.attack = false;
+    this.edges.skill = false;
     this.edges.interact = false;
     this.edges.restart = false;
     this.edges.menu = false;
