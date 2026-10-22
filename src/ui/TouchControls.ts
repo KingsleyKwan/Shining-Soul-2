@@ -4,7 +4,12 @@ import Phaser from 'phaser';
 export type TouchFrame = {
   moveX: number;
   moveY: number;
+  /** ATK just pressed (edge). */
   attack: boolean;
+  /** ATK held this frame. */
+  attackHeld: boolean;
+  /** ATK just released (edge). */
+  attackReleased: boolean;
   interact: boolean;
   restart: boolean;
   menu: boolean;
@@ -40,6 +45,9 @@ export class TouchControls {
     restart: false,
     menu: false,
   };
+  private attackHeld = false;
+  private attackReleased = false;
+  private attackPointerId: number | null = null;
   private stickPointerId: number | null = null;
   private baseX = 0;
   private baseY = 0;
@@ -94,6 +102,8 @@ export class TouchControls {
       moveX: this.moveX,
       moveY: this.moveY,
       attack: this.edges.attack,
+      attackHeld: this.attackHeld,
+      attackReleased: this.attackReleased,
       interact: this.edges.interact,
       restart: this.edges.restart,
       menu: this.edges.menu,
@@ -102,6 +112,7 @@ export class TouchControls {
     this.edges.interact = false;
     this.edges.restart = false;
     this.edges.menu = false;
+    this.attackReleased = false;
     return frame;
   }
 
@@ -128,6 +139,10 @@ export class TouchControls {
       this.edges[edge] = true;
       circle.setFillStyle(fill, 1);
       this.held.set(pointer.id, { circle, fill, idleAlpha });
+      if (edge === 'attack') {
+        this.attackHeld = true;
+        this.attackPointerId = pointer.id;
+      }
     });
 
     this.scene.add
@@ -152,6 +167,14 @@ export class TouchControls {
   }
 
   private syncButtons(): void {
+    if (this.attackPointerId !== null) {
+      const p = this.scene.input.manager.pointers[this.attackPointerId];
+      if (!p?.isDown) {
+        if (this.attackHeld) this.attackReleased = true;
+        this.attackHeld = false;
+        this.attackPointerId = null;
+      }
+    }
     if (this.held.size === 0) return;
     const pointers = this.scene.input.manager.pointers;
     for (const [id, btn] of [...this.held]) {

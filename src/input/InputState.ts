@@ -9,8 +9,12 @@ import type { TouchFrame } from '../ui/TouchControls';
 export class InputState {
   moveX = 0;
   moveY = 0;
-  /** Space, Z, or the ATK button. Edge-triggered. */
+  /** Space, Z, or the ATK button — edge on press (legacy / chest suppress). */
   attackPressed = false;
+  /** ATK held this frame (keyboard Space/Z or touch ATK). */
+  attackHeld = false;
+  /** ATK just released this frame. */
+  attackReleased = false;
   /** Keyboard Space edge. Near a chest this opens it and suppresses the slash. */
   spacePressed = false;
   /** E, Space, or the E button. Edge-triggered. */
@@ -64,8 +68,14 @@ export class InputState {
     this.moveY = Phaser.Math.Clamp(y, -1, 1);
 
     const space = justDown(this.keySpace);
+    const zDown = justDown(this.keyZ);
+    const kbAtkHeld = !!(this.keySpace?.isDown || this.keyZ?.isDown);
+    const kbAtkReleased = justUp(this.keySpace) || justUp(this.keyZ);
+
     this.spacePressed = space;
-    this.attackPressed = space || justDown(this.keyZ) || touch.attack;
+    this.attackPressed = space || zDown || touch.attack;
+    this.attackHeld = kbAtkHeld || touch.attackHeld;
+    this.attackReleased = kbAtkReleased || touch.attackReleased;
     this.interactPressed = justDown(this.keyE) || space || touch.interact;
     this.restartPressed = justDown(this.keyR) || touch.restart;
     this.menuPressed = justDown(this.keyEsc) || touch.menu;
@@ -74,4 +84,8 @@ export class InputState {
 
 function justDown(key: Phaser.Input.Keyboard.Key | undefined): boolean {
   return !!key && Phaser.Input.Keyboard.JustDown(key);
+}
+
+function justUp(key: Phaser.Input.Keyboard.Key | undefined): boolean {
+  return !!key && Phaser.Input.Keyboard.JustUp(key);
 }

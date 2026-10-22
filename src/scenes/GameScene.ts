@@ -5,6 +5,8 @@ import { Boss } from '../entities/Boss';
 import { TilePathfinder } from '../ai/TilePathfinder';
 import { GameAudio, AUDIO_REGISTRY_KEY } from '../audio/GameAudio';
 import { getHero, SELECTED_HERO_KEY } from '../data/players';
+import { formatItemToast, rollItem } from '../data/loot/roll';
+import { Inventory } from '../systems/Inventory';
 import { InputState } from '../input/InputState';
 import { TouchControls } from '../ui/TouchControls';
 
@@ -33,6 +35,8 @@ export class GameScene extends Phaser.Scene {
   private roomHud!: Phaser.GameObjects.Text;
   private goldHud!: Phaser.GameObjects.Text;
   private gold = 0;
+  private inventory = new Inventory();
+  private invHud!: Phaser.GameObjects.Text;
   private chestOpened = false;
   private chestPos?: { x: number; y: number };
   private chestGfx?: Phaser.GameObjects.Graphics;
@@ -68,6 +72,7 @@ export class GameScene extends Phaser.Scene {
     this.currentRoom = 'a';
     this.chestOpened = false;
     this.gold = 0;
+    this.inventory = new Inventory();
     this.leaving = false;
 
     const map = this.make.tilemap({ key: 'dungeon-room' });
@@ -126,6 +131,7 @@ export class GameScene extends Phaser.Scene {
       this.boss.setTarget(this.player);
       this.boss.setPathfinder(this.pathfinder);
       this.boss.setOnDefeated(() => this.showBossVictory());
+      this.boss.setOnLootDrop((dx, dy) => this.tryEnemyDrop(dx, dy, 0.55));
       this.hostiles.add(this.boss);
       this.physics.add.collider(this.boss, walls);
     }
@@ -143,8 +149,8 @@ export class GameScene extends Phaser.Scene {
     this.inputState = new InputState(this);
 
     const help = this.touch.enabled
-      ? 'Stick/WASD · ATK · E chest · R · ☰/Esc'
-      : 'WASD · Space/Z · E chest · M mute · R restart · Esc select';
+      ? 'Stick · hold ATK charge · E · R · ☰'
+      : 'WASD · hold Space/Z charge · E chest · M · R · Esc';
 
     this.add
       .text(8, 8, help, {
@@ -203,6 +209,18 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(100);
     this.refreshGoldHud();
+
+    this.invHud = this.add
+      .text(8, 104, '', {
+        fontFamily: 'monospace',
+        fontSize: '9px',
+        color: '#c8e8ff',
+        backgroundColor: '#00000088',
+        padding: { x: 4, y: 3 },
+      })
+      .setScrollFactor(0)
+      .setDepth(100);
+    this.refreshInvHud();
 
     this.chestPrompt = this.add
       .text(0, 0, 'E / Space — Open', {
@@ -284,6 +302,7 @@ export class GameScene extends Phaser.Scene {
     const enemy = new Enemy(this, x, y, hp);
     enemy.setTarget(this.player);
     enemy.setPathfinder(this.pathfinder);
+    enemy.setOnLootDrop((dx, dy) => this.tryEnemyDrop(dx, dy, 0.28));
     this.enemies.add(enemy);
     this.hostiles.add(enemy);
     this.physics.add.collider(enemy, walls);
@@ -380,11 +399,49 @@ export class GameScene extends Phaser.Scene {
     this.gold += goldGain;
     this.refreshGoldHud();
 
+    const item = rollItem(Math.random, {
+      preferWeapon: true,
+      allowedWeaponTypes: this.player.playerData.weapons.allowedTypes,
+    });
+    this.giveItem(item);
+
     const parts: string[] = [];
     if (healed > 0) parts.push(`+${healed} HP`);
     else parts.push('HP full');
     parts.push(`+${goldGain} gold`);
+    parts.push(formatItemToast(item));
     this.showLootToast(parts.join('  ·  '));
+  }
+
+  private tryEnemyDrop(x: number, y: number, chance: number): void {
+    if (this.gameOver || Math.random() > chance) return;
+    const item = rollItem(Math.random, {
+      allowedWeaponTypes: this.player.playerData.weapons.allowedTypes,
+    });
+    this.giveItem(item);
+    this.showLootToast(formatItemToast(item));
+    // Brief spark at death position
+    const spark = this.add.circle(x, y - 8, 4, 0xffe066, 0.9).setDepth(30);
+    this.tweens.add({
+      targets: spark,
+      alpha: 0,
+      y: y - 24,
+      duration: 500,
+      onComplete: () => spark.destroy(),
+    });
+  }
+
+  private giveItem(item: ReturnType<typeof rollItem>): void {
+    this.inventory.add(item);
+    this.player.applyGearMods(this.inventory.getMods());
+    this.refreshInvHud();
+  }
+
+  private refreshInvHud(): void {
+    const w = this.inventory.getEquippedWeapon();
+    const line = this.inventory.hudLine();
+    const zh = w ? w.nameZh : '無裝備';
+    this.invHud?.setText(`${line}\n${zh}`);
   }
 
   private refreshGoldHud(): void {
@@ -659,7 +716,8 @@ export class GameScene extends Phaser.Scene {
       const hostile = obj as Hostile;
       if (!hostile.active || this.hitThisSwing.has(hostile)) return;
       this.hitThisSwing.add(hostile);
-      hostile.takeDamage(1, this.player.x, this.player.y);
+      const dmg = (zone.getData('damage') as number | undefined) ?? this.player.getSlashDamage(0);
+      hostile.takeDamage(dmg, this.player.x, this.player.y);
     });
   }
 }

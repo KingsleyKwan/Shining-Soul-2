@@ -59,7 +59,7 @@ Desktop keys are unchanged. Touch controls appear only on touch-capable devices 
 | Input / 按鍵 | Action / 作用 |
 |--------------|---------------|
 | **WASD** / **Arrow keys** | Move / 四向移動 |
-| **Space** / **Z** | Attack (short hitbox) / 攻擊（短判定框） |
+| **Space** / **Z** | Tap = attack; **hold** = charge 1–3 (cyan→yellow→red) / 輕點攻擊；**長按**蓄力 1–3 段（青→黃→紅） |
 | **E**（near chest） | Open Room B chest / 開 B 房寶箱 |
 | **Space**（when chest prompt shows） | Same as **E** / 有提示時等同開箱（不揮刀） |
 | Walk into **door** | Fade + teleport to other room / 淡入淡出傳送 |
@@ -76,7 +76,7 @@ Shown when the device reports touch (`maxTouchPoints`, a coarse pointer, or Phas
 | Control / 控件 | Action / 作用 |
 |----------------|---------------|
 | Joystick（bottom-left / 左下） | Move / 移動（鬆開歸零，拖出底盤仍有效） |
-| **ATK**（bottom-right / 右下） | Attack / 攻擊（同 Space / Z，點按一次） |
+| **ATK**（bottom-right / 右下） | Tap or **hold** to charge / 輕點或**長按**蓄力（同 Space / Z） |
 | **E**（beside ATK / 攻擊鍵旁） | Open chest / 開箱（同鍵盤 E） |
 | **R**（top-right / 右上） | Restart / 重開 |
 | **☰** | Back to select / 返回選角（同 Esc） |
@@ -165,6 +165,23 @@ Mechanics are decoupled from character data so a future hero is mostly **new dat
 | `FourDirAnimController` | Idle/Walk/Attack/Hurt/Faint by facing · 四向動畫狀態機（依朝向） |
 | `Player` | Thin wrapper: one class + swap `PlayerData` · 薄包裝，換資料即可換角 |
 
+
+## Phase 2 — Charge & loot / 第二階段 — 蓄力與掉落
+
+### Charge attack / 蓄力攻擊
+- Hold **Space / Z / ATK** → stages **1–3** with a charge ring (**cyan → yellow → red**).
+- Release fires a larger hitbox; damage uses `stats.str` + gear + stage:
+  `max(1, floor((str + gearDamage + stage*2) / 2))`.
+- Quick tap (release before stage 1) = normal slash.
+- 長按蓄力；鬆開揮砍。輕點（未到第 1 段）＝普通攻擊。傷害接 `str`／裝備／段數。
+
+### Loot affixes / 詞綴掉落
+- Diablo-like **prefix + suffix** data in `src/data/loot/` (JSON-friendly TS).
+- Chest always rolls 1 item (prefers hero weapon type) + HP/gold; Paste ~28% / Boss ~55% drop.
+- Names: EN + 香港繁體（例：「鋒利鐵劍之力量」）.
+- `Inventory` stub auto-equips best weapon; mods apply to damage/speed/str; HUD shows bag + equipped.
+- 寶箱必出一件；敵人有機率掉落。背包自動裝備最高傷害武器。
+
 ## Project structure / 目錄結構
 
 ```
@@ -191,7 +208,10 @@ shining-soul-2-web/
     ├── heroes.ts             # deprecated re-export → data/players
     ├── data/
     │   ├── types.ts          # PlayerData, Facing, AnimSetKeys, …
-    │   └── players/          # eric.ts / prim.ts / raizen.ts + index
+    │   ├── players/          # eric.ts / prim.ts / raizen.ts + index
+    │   └── loot/             # bases, affixes, rollItem (Phase 2)
+    ├── systems/
+    │   └── Inventory.ts      # bag + auto-equip weapon
     ├── anim/
     │   └── FourDirAnimController.ts
     ├── audio/GameAudio.ts
@@ -221,25 +241,16 @@ Edit the map in [Tiled](https://www.mapeditor.org/): open `public/assets/maps/du
 Ideas only — not implemented yet.  
 僅為想法，下列尚未實現：
 
-### Phase 2 follow-ups / 第二階段跟進
-1. **Charge attack** driven by `PlayerData` / weapon stub (hold ATK)  
-   依角色資料／武器 stub 的蓄力攻擊（長按 ATK）
-2. **Loot table** beyond one chest (drops use `str` / weapon permissions)  
-   掉落表（可接 `str`／武器權限 stub）
-3. Wire `stats.str` into slash damage instead of flat 1  
-   將 `stats.str` 接入揮砍傷害
+### Done in Phase 2 / 第二階段已完成
+Charge stages + STR damage; affix loot + inventory stub.  
+蓄力段數＋力量傷害；詞綴掉落＋背包 stub。
 
-### Other / 其他
-4. More rooms / stairs  
-   更多房間／樓梯
-5. Distinct Prim / Raizen attack VFX (staff / shuriken) while keeping Space/Z  
-   職業差異化攻擊表現（仍用 Space/Z）
-6. Replace placeholder BGM/SFX with GBAMusRippy for personal testing  
-   個人測試用原曲替換佔位音頻
-7. Save selected class + gold across **R**  
-   跨重開保留職業／金幣
-8. Wizard / other class = new `data/players/*.ts` + atlas (Phase 1 path)  
-   其他職業＝新資料檔 + 圖集（走第一階段路徑）
+### Next ideas / 下一步想法
+1. Full inventory UI (equip/compare) · 完整背包介面  
+2. More rooms / stairs · 更多房間／樓梯  
+3. Distinct Prim / Raizen charge VFX · 職業蓄力特效  
+4. Persist gold / bag across **R** · 跨重開保留金幣／背包  
+5. Wizard = new `data/players/*.ts` + atlas · 新職業資料檔  
 
 ---
 

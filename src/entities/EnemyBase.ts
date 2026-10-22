@@ -13,6 +13,7 @@ export abstract class EnemyBase extends CharacterBase {
   protected pather: PathFollower | null = null;
   protected knockbackUntil = 0;
   protected hurtUntil = 0;
+  private onLootDrop?: (x: number, y: number) => void;
 
   protected hpText?: Phaser.GameObjects.Text;
   protected hpBarBg?: Phaser.GameObjects.Rectangle;
@@ -39,6 +40,10 @@ export abstract class EnemyBase extends CharacterBase {
 
   setPathfinder(finder: TilePathfinder, repathMs = 400): void {
     this.pather = new PathFollower(finder, repathMs);
+  }
+
+  setOnLootDrop(cb: (x: number, y: number) => void): void {
+    this.onLootDrop = cb;
   }
 
   protected createHpUi(opts?: {
@@ -125,11 +130,14 @@ export abstract class EnemyBase extends CharacterBase {
     const body = this.body as Phaser.Physics.Arcade.Body | undefined;
     body?.setEnable(false);
     this.setVelocity(0, 0);
+    const dropX = this.x;
+    const dropY = this.y;
     this.scene.tweens.add({
       targets,
       alpha: 0,
       duration: durationMs,
       onComplete: () => {
+        this.onLootDrop?.(dropX, dropY);
         onComplete?.();
         this.destroy();
       },

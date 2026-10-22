@@ -1,0 +1,63 @@
+import type { ItemBaseDef } from './types';
+
+export const ITEM_BASES: ItemBaseDef[] = [
+  {
+    id: 'iron_sword',
+    slot: 'weapon',
+    weaponType: 'sword',
+    nameEn: 'Iron Sword',
+    nameZh: '鐵劍',
+    mods: { damage: 1 },
+    weight: 10,
+  },
+  {
+    id: 'oak_staff',
+    slot: 'weapon',
+    weaponType: 'staff',
+    nameEn: 'Oak Staff',
+    nameZh: '橡木杖',
+    mods: { damage: 1, maxHp: 1 },
+    weight: 10,
+  },
+  {
+    id: 'steel_kunai',
+    slot: 'weapon',
+    weaponType: 'kunai',
+    nameEn: 'Steel Kunai',
+    nameZh: '鋼苦無',
+    mods: { damage: 1, speed: 8 },
+    weight: 10,
+  },
+  {
+    id: 'leather_vest',
+    slot: 'armor',
+    nameEn: 'Leather Vest',
+    nameZh: '皮甲',
+    mods: { maxHp: 1 },
+    weight: 8,
+  },
+  {
+    id: 'chain_mail',
+    slot: 'armor',
+    nameEn: 'Chain Mail',
+    nameZh: '鎖子甲',
+    mods: { maxHp: 2, speed: -5 },
+    weight: 5,
+  },
+  {
+    id: 'copper_ring',
+    slot: 'accessory',
+    nameEn: 'Copper Ring',
+    nameZh: '銅戒',
+    mods: { str: 1 },
+    weight: 7,
+  },
+  {
+    id: 'jade_charm',
+    slot: 'accessory',
+    nameEn: 'Jade Charm',
+    nameZh: '玉佩',
+    mods: { speed: 8, maxHp: 1 },
+    weight: 4,
+  },
+];
