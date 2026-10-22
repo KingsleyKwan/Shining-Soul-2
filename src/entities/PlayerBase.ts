@@ -224,8 +224,8 @@ export class PlayerBase extends CharacterBase {
 
     if (!this.attacking) {
       this.animCtl.setFacing(this.facing);
-      if (this.charging && this.chargeStage >= 1) {
-        // Hold idle facing while the ring is up — avoids walk-flip afterimage look.
+      if (this.charging) {
+        // Hold idle while charging — avoids walk-flip afterimage / "clone" look.
         this.animCtl.playIdle();
       } else {
         const moving = Math.abs(vx) + Math.abs(vy) > 1;
@@ -346,15 +346,7 @@ export class PlayerBase extends CharacterBase {
     body.setAllowGravity(false);
     body.setImmovable(true);
 
-    // Subtle slash flash only for charged stages (tap = no yellow rect clutter).
-    let g: Phaser.GameObjects.Graphics | undefined;
-    if (stage >= 1) {
-      const color = stage >= 3 ? 0xff4444 : stage === 2 ? 0xffcc44 : 0x44ddff;
-      g = this.scene.add.graphics().setDepth(20);
-      g.lineStyle(2, color, 0.55);
-      g.strokeRect(zone.x - w / 2, zone.y - h / 2, w, h);
-      zone.setData('debugGfx', g);
-    }
+    // No debug rect — charge ring already shows stage; yellow box looked like "clones".
     zone.setData('damage', damage);
     zone.setData('chargeStage', stage);
 

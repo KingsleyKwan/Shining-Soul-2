@@ -30,6 +30,10 @@ export class GameScene extends Phaser.Scene {
   private touch!: TouchControls;
   private inputState!: InputState;
   private leaving = false;
+  /** Ignore GO pointer until this time (ms) — avoid death-frame eats. */
+  private gameOverIgnorePointerUntil = 0;
+  private boundWindowKey?: (e: KeyboardEvent) => void;
+  private gameOverInputBound = false;
   private hitThisSwing = new Set<Hostile>();
   private hpHud!: Phaser.GameObjects.Text;
   private roomHud!: Phaser.GameObjects.Text;
@@ -268,6 +272,7 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     this.inputState.update(this.touch.poll());
 
+    // Always process restart/menu — including during GAME OVER.
     if (this.inputState.restartPressed) {
       this.restartRun();
       return;
@@ -286,18 +291,66 @@ export class GameScene extends Phaser.Scene {
   private restartRun(): void {
     if (this.leaving) return;
     this.leaving = true;
-    // Defer out of the input callback so ScenePlugin shutdown is clean.
-    this.time.delayedCall(0, () => {
-      this.scene.restart();
-    });
+    this.teardownGameOverInput();
+    // Direct restart — no delayedCall (timer race left leaving=true with no restart).
+    this.scene.restart();
   }
 
   private backToSelect(): void {
     if (this.leaving) return;
     this.leaving = true;
-    this.time.delayedCall(0, () => {
-      this.scene.start('SelectScene');
-    });
+    this.teardownGameOverInput();
+    this.scene.start('SelectScene');
+  }
+
+  private teardownGameOverInput(): void {
+    if (!this.gameOverInputBound) {
+      if (this.boundWindowKey) {
+        window.removeEventListener('keydown', this.boundWindowKey);
+        this.boundWindowKey = undefined;
+      }
+      return;
+    }
+    this.gameOverInputBound = false;
+    this.input.off('pointerdown', this.onGameOverPointer, this);
+    this.input.keyboard?.off('keydown', this.onGameOverKey, this);
+    if (this.boundWindowKey) {
+      window.removeEventListener('keydown', this.boundWindowKey);
+      this.boundWindowKey = undefined;
+    }
+  }
+
+  private onGameOverPointer(
+    _pointer: Phaser.Input.Pointer,
+    currentlyOver?: Phaser.GameObjects.GameObject[],
+  ): void {
+    if (!this.gameOver || this.leaving) return;
+    if (this.time.now < this.gameOverIgnorePointerUntil) return;
+    const top = currentlyOver?.[0] as Phaser.GameObjects.GameObject | undefined;
+    const ui = top && 'getData' in top ? (top as Phaser.GameObjects.GameObject).getData('touchUi') : undefined;
+    // ☰ = select; R touch button still restarts via InputState.
+    if (ui === 'menu') {
+      this.backToSelect();
+      return;
+    }
+    if (ui === 'restart') {
+      this.restartRun();
+      return;
+    }
+    // Any other tap/click on the canvas (screen-space scene input) → restart.
+    this.restartRun();
+  }
+
+  private onGameOverKey(event: KeyboardEvent): void {
+    if (!this.gameOver || this.leaving) return;
+    const k = event.key;
+    if (k === 'r' || k === 'R') {
+      event.preventDefault();
+      this.restartRun();
+    } else if (k === 'Escape') {
+      event.preventDefault();
+      this.backToSelect();
+    }
   }
 
   private spawnPaste(
@@ -368,12 +421,13 @@ export class GameScene extends Phaser.Scene {
 
   private nearChest(): boolean {
     if (!this.chestPos || this.player.isDead()) return false;
+    // Generous reach — body offset + slime body-block made 36px unreliable.
     return Phaser.Math.Distance.Between(
       this.player.x,
       this.player.y,
       this.chestPos.x,
       this.chestPos.y,
-    ) <= 36;
+    ) <= 64;
   }
 
   private updateChestInteract(): void {
@@ -577,17 +631,16 @@ export class GameScene extends Phaser.Scene {
   private showGameOver(): void {
     if (this.gameOver) return;
     this.gameOver = true;
-    // Allow a fresh restart even if a prior leaving flag got stuck mid-shutdown.
     this.leaving = false;
+    // Visual-only overlay (NOT interactive). scrollFactor(0)+setInteractive hit-tests in
+    // world space while drawing in screen space — clicks miss after camera moves (Room B).
+    this.gameOverIgnorePointerUntil = this.time.now + 300;
 
     const { width, height } = this.scale;
-    // Full-screen interactive hit target (depth below touch UI 1200, above world).
-    // Prior bug: non-interactive overlay + input.once could miss taps / race leaving.
-    const bg = this.add
+    this.add
       .rectangle(width / 2, height / 2, width, height, 0x000000, 0.55)
       .setScrollFactor(0)
-      .setDepth(200)
-      .setInteractive({ useHandCursor: true });
+      .setDepth(200);
     this.add
       .text(width / 2, height / 2 - 12, 'GAME OVER', {
         fontFamily: 'monospace',
@@ -607,28 +660,40 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(201);
 
-    // Defer accept so the death-frame pointer / held ATK cannot eat the first restart.
-    let accept = false;
-    this.time.delayedCall(350, () => {
-      accept = true;
-      hint.setText('R / 點按重開 · Esc / ☰ 選角');
+    // Flash hint when pointer-ignore window ends.
+    this.time.delayedCall(300, () => {
+      if (!this.gameOver || !hint.active) return;
+      hint.setColor('#ffe066');
+      this.time.delayedCall(200, () => {
+        if (hint.active) hint.setColor('#e8eef5');
+      });
     });
-    hint.setText('…');
 
-    const tryRestart = () => {
-      if (!accept || this.leaving) return;
-      this.restartRun();
+    this.bindGameOverInput();
+  }
+
+  private bindGameOverInput(): void {
+    if (this.gameOverInputBound) return;
+    this.gameOverInputBound = true;
+
+    // Scene-level pointer uses screen/canvas coords — reliable with camera follow.
+    this.input.on('pointerdown', this.onGameOverPointer, this);
+    this.input.keyboard?.on('keydown', this.onGameOverKey, this);
+
+    // Window fallback when canvas lacks focus (Playwright / tab focus issues).
+    this.boundWindowKey = (e: KeyboardEvent) => {
+      if (!this.gameOver || this.leaving) return;
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        this.restartRun();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        this.backToSelect();
+      }
     };
-    const trySelect = () => {
-      if (!accept || this.leaving) return;
-      this.backToSelect();
-    };
+    window.addEventListener('keydown', this.boundWindowKey);
 
-    bg.on('pointerdown', tryRestart);
-
-    // Direct keyboard (more reliable than JustDown alone after long fights).
-    this.input.keyboard?.on('keydown-R', tryRestart);
-    this.input.keyboard?.on('keydown-ESC', trySelect);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardownGameOverInput());
   }
 
   private propString(
