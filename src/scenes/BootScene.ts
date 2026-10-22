@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GameAudio } from '../audio/GameAudio';
-import { HERO_ORDER, HEROES } from '../heroes';
+import { HERO_ORDER, HEROES } from '../data/players';
 
 /**
  * Loads atlases + map + audio; registers anims; goes to character select.

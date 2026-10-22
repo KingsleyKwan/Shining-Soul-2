@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { GameAudio } from '../audio/GameAudio';
-import type { Player } from './Player';
-import { PathFollower, type TilePathfinder } from '../ai/TilePathfinder';
+import type { Facing } from '../data/types';
+import type { TilePathfinder } from '../ai/TilePathfinder';
+import { EnemyBase } from './EnemyBase';
 
 const DEFAULT_HP = 14;
 const IFRAME_MS = 280;
@@ -17,40 +17,18 @@ const ATTACK_DAMAGE = 2;
 const LUNGE_SPEED = 120;
 const LUNGE_MS = 160;
 
-type Facing = 'down' | 'up' | 'left' | 'right';
-
 /**
  * Captain Gully dungeon boss — tile A* chase + melee lunge.
- * Atlas: "gully" (darkbolt99 / Spriters Resource) — see gully-frame-map.json.
+ * Extends EnemyBase; atlas "gully" (darkbolt99 / Spriters Resource).
  */
-export class Boss extends Phaser.Physics.Arcade.Sprite {
-  readonly maxHp: number;
-  hp: number;
-
-  private target: Player | null = null;
-  private pather: PathFollower | null = null;
-  private facing: Facing = 'down';
-  private iframeUntil = 0;
+export class Boss extends EnemyBase {
   private nextAttackAt = 0;
-  private knockbackUntil = 0;
-  private hurtUntil = 0;
   private attackingUntil = 0;
-  private dying = false;
   private onDefeated?: () => void;
-
-  private label: Phaser.GameObjects.Text;
-  private hpText: Phaser.GameObjects.Text;
-  private hpBarBg: Phaser.GameObjects.Rectangle;
-  private hpBarFg: Phaser.GameObjects.Rectangle;
+  private label!: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, x: number, y: number, maxHp = DEFAULT_HP) {
-    super(scene, x, y, 'gully', 'idle_0');
-
-    this.maxHp = maxHp;
-    this.hp = maxHp;
-
-    scene.add.existing(this);
-    scene.physics.add.existing(this);
+    super(scene, x, y, 'gully', 'idle_0', maxHp, CHASE_SPEED);
 
     this.setDepth(9);
     this.setScale(2);
@@ -74,44 +52,48 @@ export class Boss extends Phaser.Physics.Arcade.Sprite {
       .setOrigin(0.5)
       .setDepth(12);
 
-    this.hpBarBg = scene.add
-      .rectangle(x, y - 28, 36, 4, 0x222222, 0.9)
-      .setDepth(11)
-      .setOrigin(0.5, 0.5);
-    this.hpBarFg = scene.add
-      .rectangle(x - 18, y - 28, 36, 4, 0xdd4444, 0.95)
-      .setDepth(12)
-      .setOrigin(0, 0.5);
+    this.createHpUi({
+      barWidth: 36,
+      barY: 28,
+      textY: 22,
+      barColor: 0xdd4444,
+      textColor: '#ffe8e8',
+    });
+    // Boss HP bar sits above label depth
+    this.hpBarBg?.setDepth(11);
+    this.hpBarFg?.setDepth(12);
+    this.hpText?.setDepth(12);
 
-    this.hpText = scene.add
-      .text(x, y - 22, `${this.hp}/${this.maxHp}`, {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#ffe8e8',
-        stroke: '#000000',
-        strokeThickness: 2,
-      })
-      .setOrigin(0.5)
-      .setDepth(12);
-
-    this.refreshHpUi();
     this.play('gully-idle-down', true);
   }
 
-  setTarget(player: Player): void {
-    this.target = player;
-  }
-
-  setPathfinder(finder: TilePathfinder): void {
-    this.pather = new PathFollower(finder, 450);
+  override setPathfinder(finder: TilePathfinder): void {
+    super.setPathfinder(finder, 450);
   }
 
   setOnDefeated(cb: () => void): void {
     this.onDefeated = cb;
   }
 
+  protected override getIframeMs(): number {
+    return IFRAME_MS;
+  }
+
+  protected override getKnockbackSpeed(): number {
+    return KNOCKBACK;
+  }
+
+  protected override getHurtFlashMs(): number {
+    return 320;
+  }
+
+  protected override colorHpBar(ratio: number): void {
+    if (!this.hpBarFg) return;
+    this.hpBarFg.fillColor = ratio > 0.5 ? 0xdd4444 : ratio > 0.25 ? 0xdd8844 : 0x882222;
+  }
+
   /** @returns true if damage applied */
-  takeDamage(amount: number, fromX: number, fromY: number): boolean {
+  override takeDamage(amount: number, fromX: number, fromY: number): boolean {
     if (this.dying || !this.active) return false;
 
     const now = this.scene.time.now;
@@ -122,19 +104,11 @@ export class Boss extends Phaser.Physics.Arcade.Sprite {
     this.attackingUntil = 0;
     this.hp = Math.max(0, this.hp - amount);
     this.refreshHpUi();
-    GameAudio.get(this.scene)?.hit();
+    this.onDamaged(amount, fromX, fromY);
 
     this.play('gully-hurt', true);
     this.setTint(0xffffff);
-
-    const dx = this.x - fromX;
-    const dy = this.y - fromY;
-    const len = Math.hypot(dx, dy) || 1;
-    this.knockbackUntil = now + 150;
-    const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setMaxVelocity(KNOCKBACK, KNOCKBACK);
-    this.setVelocity((dx / len) * KNOCKBACK, (dy / len) * KNOCKBACK);
-    this.pather?.reset();
+    this.applyEnemyKnockback(fromX, fromY, KNOCKBACK, 150);
 
     if (this.hp <= 0) {
       this.startDeath();
@@ -147,31 +121,14 @@ export class Boss extends Phaser.Physics.Arcade.Sprite {
     return true;
   }
 
-  private startDeath(): void {
-    this.dying = true;
+  protected override onDeathStarted(): void {
     this.setFrame('defeat_0');
     this.anims.stop();
     this.setTint(0xff8888);
-    const body = this.body as Phaser.Physics.Arcade.Body | undefined;
-    body?.setEnable(false);
-    this.setVelocity(0, 0);
-
-    this.scene.tweens.add({
-      targets: [this, this.label, this.hpText, this.hpBarBg, this.hpBarFg],
-      alpha: 0,
-      duration: DEATH_FLASH_MS,
-      onComplete: () => {
-        this.onDefeated?.();
-        this.destroy();
-      },
-    });
-  }
-
-  private refreshHpUi(): void {
-    this.hpText.setText(`${this.hp}/${this.maxHp}`);
-    const ratio = this.maxHp > 0 ? this.hp / this.maxHp : 0;
-    this.hpBarFg.width = Math.max(0, 36 * ratio);
-    this.hpBarFg.fillColor = ratio > 0.5 ? 0xdd4444 : ratio > 0.25 ? 0xdd8844 : 0x882222;
+    const ui = [this, this.label, this.hpText, this.hpBarBg, this.hpBarFg].filter(
+      Boolean,
+    ) as Phaser.GameObjects.GameObject[];
+    this.fadeAndDestroy(ui, DEATH_FLASH_MS, () => this.onDefeated?.());
   }
 
   private facingFromDelta(dx: number, dy: number): Facing {
@@ -205,7 +162,6 @@ export class Boss extends Phaser.Physics.Arcade.Sprite {
       return;
     }
 
-    // Finish brief lunge window without re-pathing
     if (time < this.attackingUntil) {
       return;
     }
@@ -225,8 +181,10 @@ export class Boss extends Phaser.Physics.Arcade.Sprite {
     }
 
     if (dist > ATTACK_RANGE) {
-      const blockedX = body.blocked.left || body.blocked.right || body.wasTouching.left || body.wasTouching.right;
-      const blockedY = body.blocked.up || body.blocked.down || body.wasTouching.up || body.wasTouching.down;
+      const blockedX =
+        body.blocked.left || body.blocked.right || body.wasTouching.left || body.wasTouching.right;
+      const blockedY =
+        body.blocked.up || body.blocked.down || body.wasTouching.up || body.wasTouching.down;
 
       let vx: number;
       let vy: number;
@@ -254,7 +212,6 @@ export class Boss extends Phaser.Physics.Arcade.Sprite {
       return;
     }
 
-    // Melee: stop, play attack, short lunge, deal 2 dmg
     this.facing = this.facingFromDelta(dx, dy);
     this.setVelocity(0, 0);
     if (time >= this.nextAttackAt) {
@@ -289,21 +246,13 @@ export class Boss extends Phaser.Physics.Arcade.Sprite {
 
     this.updateAi(time);
 
-    this.label.setPosition(this.x, this.y - 36);
-    this.hpText.setPosition(this.x, this.y - 22);
-    this.hpBarBg.setPosition(this.x, this.y - 28);
-    this.hpBarFg.setPosition(this.x - 18, this.y - 28);
-
-    if (!this.dying && time < this.iframeUntil) {
-      this.setTint(Math.floor(time / 40) % 2 === 0 ? 0xff8888 : 0xffffff);
-    }
+    this.label?.setPosition(this.x, this.y - 36);
+    this.syncHpUiPositions();
+    this.flashIframeTint(time, 40);
   }
 
-  destroy(fromScene?: boolean): void {
+  override destroy(fromScene?: boolean): void {
     this.label?.destroy();
-    this.hpText?.destroy();
-    this.hpBarBg?.destroy();
-    this.hpBarFg?.destroy();
     super.destroy(fromScene);
   }
 }

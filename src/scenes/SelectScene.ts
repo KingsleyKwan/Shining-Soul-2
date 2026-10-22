@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { HERO_ORDER, HEROES, SELECTED_HERO_KEY, type HeroId } from '../heroes';
+import { HERO_ORDER, HEROES, SELECTED_HERO_KEY, type HeroId } from '../data/players';
 
 /**
  * Title + character select. 1/2/3 or click → GameScene.

@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
-import { GameAudio } from '../audio/GameAudio';
-import type { Player } from './Player';
-import { PathFollower, type TilePathfinder } from '../ai/TilePathfinder';
+import type { TilePathfinder } from '../ai/TilePathfinder';
+import { EnemyBase } from './EnemyBase';
 
 const DEFAULT_HP = 3;
 const IFRAME_MS = 220;
@@ -16,31 +15,13 @@ const ATTACK_COOLDOWN_MS = 1000;
 
 /**
  * Paste enemy (SS2 slime) — chase + melee with tile A* pathfinding.
- * Atlas: "paste" from Claire Starsword / Spriters Resource (see paste-frame-map.json).
+ * Extends EnemyBase; atlas "paste" from Claire Starsword / Spriters Resource.
  */
-export class Enemy extends Phaser.Physics.Arcade.Sprite {
-  readonly maxHp: number;
-  hp: number;
-
-  private target: Player | null = null;
-  private pather: PathFollower | null = null;
-  private iframeUntil = 0;
+export class Enemy extends EnemyBase {
   private nextAttackAt = 0;
-  private knockbackUntil = 0;
-  private hurtUntil = 0;
-  private dying = false;
-  private hpText: Phaser.GameObjects.Text;
-  private hpBarBg: Phaser.GameObjects.Rectangle;
-  private hpBarFg: Phaser.GameObjects.Rectangle;
 
   constructor(scene: Phaser.Scene, x: number, y: number, maxHp = DEFAULT_HP) {
-    super(scene, x, y, 'paste', 'idle_0');
-
-    this.maxHp = maxHp;
-    this.hp = maxHp;
-
-    scene.add.existing(this);
-    scene.physics.add.existing(this);
+    super(scene, x, y, 'paste', 'idle_0', maxHp, CHASE_SPEED);
 
     this.setDepth(8);
     this.setScale(2);
@@ -50,45 +31,43 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.setDrag(0, 0);
 
     const body = this.body as Phaser.Physics.Arcade.Body;
-    // Paste frames ~20–27 wide; keep feet near origin
     body.setSize(14, 12);
     body.setOffset(6, 10);
     body.setMaxVelocity(CHASE_SPEED, CHASE_SPEED);
 
-    this.hpBarBg = scene.add
-      .rectangle(x, y - 18, 20, 3, 0x222222, 0.85)
-      .setDepth(9)
-      .setOrigin(0.5, 0.5);
-    this.hpBarFg = scene.add
-      .rectangle(x - 10, y - 18, 20, 3, 0x44cc55, 0.95)
-      .setDepth(10)
-      .setOrigin(0, 0.5);
+    this.createHpUi({
+      barWidth: 20,
+      barY: 18,
+      textY: 24,
+      barColor: 0x44cc55,
+      textColor: '#e8ffe8',
+    });
 
-    this.hpText = scene.add
-      .text(x, y - 24, `${this.hp}/${this.maxHp}`, {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#e8ffe8',
-        stroke: '#000000',
-        strokeThickness: 2,
-      })
-      .setOrigin(0.5, 0.5)
-      .setDepth(11);
-
-    this.refreshHpUi();
     this.play('paste-idle', true);
   }
 
-  setTarget(player: Player): void {
-    this.target = player;
+  override setPathfinder(finder: TilePathfinder): void {
+    super.setPathfinder(finder, 400);
   }
 
-  setPathfinder(finder: TilePathfinder): void {
-    this.pather = new PathFollower(finder, 400);
+  protected override getIframeMs(): number {
+    return IFRAME_MS;
+  }
+
+  protected override getKnockbackSpeed(): number {
+    return KNOCKBACK;
+  }
+
+  protected override getHurtStunMs(): number {
+    return 0;
+  }
+
+  protected override getHurtFlashMs(): number {
+    return 280;
   }
 
   /** @returns true if damage was applied this call */
-  takeDamage(amount: number, fromX: number, fromY: number): boolean {
+  override takeDamage(amount: number, fromX: number, fromY: number): boolean {
     if (this.dying || !this.active) return false;
 
     const now = this.scene.time.now;
@@ -98,7 +77,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.hurtUntil = now + 280;
     this.hp = Math.max(0, this.hp - amount);
     this.refreshHpUi();
-    GameAudio.get(this.scene)?.hit();
+    this.onDamaged(amount, fromX, fromY);
 
     this.play('paste-hurt', true);
     this.setTint(0xffffff);
@@ -113,14 +92,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       },
     });
 
-    const dx = this.x - fromX;
-    const dy = this.y - fromY;
-    const len = Math.hypot(dx, dy) || 1;
-    this.knockbackUntil = now + 140;
-    const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setMaxVelocity(KNOCKBACK, KNOCKBACK);
-    this.setVelocity((dx / len) * KNOCKBACK, (dy / len) * KNOCKBACK);
-    this.pather?.reset();
+    this.applyEnemyKnockback(fromX, fromY, KNOCKBACK, 140);
 
     if (this.hp <= 0) {
       this.startDeath();
@@ -133,27 +105,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     return true;
   }
 
-  private startDeath(): void {
-    this.dying = true;
+  protected override onDeathStarted(): void {
     this.play('paste-hurt', true);
     this.setTint(0xff6666);
-    const body = this.body as Phaser.Physics.Arcade.Body | undefined;
-    body?.setEnable(false);
-    this.setVelocity(0, 0);
-
-    this.scene.tweens.add({
-      targets: [this, this.hpText, this.hpBarBg, this.hpBarFg],
-      alpha: 0,
-      duration: DEATH_FLASH_MS,
-      onComplete: () => this.destroy(),
-    });
-  }
-
-  private refreshHpUi(): void {
-    this.hpText.setText(`${this.hp}/${this.maxHp}`);
-    const ratio = this.maxHp > 0 ? this.hp / this.maxHp : 0;
-    this.hpBarFg.width = Math.max(0, 20 * ratio);
-    this.hpBarFg.fillColor = ratio > 0.5 ? 0x44cc55 : ratio > 0.25 ? 0xcccc44 : 0xcc4444;
+    const ui = [this, this.hpText, this.hpBarBg, this.hpBarFg].filter(
+      Boolean,
+    ) as Phaser.GameObjects.GameObject[];
+    this.fadeAndDestroy(ui, DEATH_FLASH_MS);
   }
 
   private updateAnim(chasing: boolean, time: number): void {
@@ -200,8 +158,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     if (dist > ATTACK_RANGE) {
-      const blockedX = body.blocked.left || body.blocked.right || body.wasTouching.left || body.wasTouching.right;
-      const blockedY = body.blocked.up || body.blocked.down || body.wasTouching.up || body.wasTouching.down;
+      const blockedX =
+        body.blocked.left || body.blocked.right || body.wasTouching.left || body.wasTouching.right;
+      const blockedY =
+        body.blocked.up || body.blocked.down || body.wasTouching.up || body.wasTouching.down;
 
       if (this.pather) {
         const v = this.pather.chaseVelocity(
@@ -224,7 +184,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     this.setVelocity(0, 0);
-    this.updateAnim(true, time); // bob while in melee
+    this.updateAnim(true, time);
     if (time >= this.nextAttackAt) {
       this.nextAttackAt = time + ATTACK_COOLDOWN_MS;
       this.target.takeDamage(1, this.x, this.y);
@@ -242,20 +202,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (!this.active) return;
 
     this.updateAi(time);
-
-    this.hpText.setPosition(this.x, this.y - 24);
-    this.hpBarBg.setPosition(this.x, this.y - 18);
-    this.hpBarFg.setPosition(this.x - 10, this.y - 18);
-
-    if (!this.dying && time < this.iframeUntil) {
-      this.setTint(Math.floor(time / 40) % 2 === 0 ? 0xff8888 : 0xffffff);
-    }
-  }
-
-  destroy(fromScene?: boolean): void {
-    this.hpText?.destroy();
-    this.hpBarBg?.destroy();
-    this.hpBarFg?.destroy();
-    super.destroy(fromScene);
+    this.syncHpUiPositions();
+    this.flashIframeTint(time, 40);
   }
 }

@@ -152,6 +152,19 @@ To swap music later: drop GBAMusRippy (or custom) files into `public/assets/audi
 
 ---
 
+## Phase 1 architecture / 第一階段架構
+
+Mechanics are decoupled from character data so a future hero is mostly **new data + atlas**, not a rewrite of `Player`.
+機制與角色資料分離：日後加新英雄大致只要 **新資料檔 + 圖集**，不必重寫 `Player`。
+
+| Piece / 模組 | Role / 作用 |
+|--------------|-------------|
+| `CharacterBase` | Shared move / collide / hurt / HP / facing · 共用移動、碰撞、受傷、生命、朝向 |
+| `PlayerBase` / `EnemyBase` | Player & enemy extensions · 玩家／敵人延伸 |
+| `data/players/*.ts` (`PlayerData`) | id, stats (HP/STR/speed), weapon stub, anim set keys · 角色資料 |
+| `FourDirAnimController` | Idle/Walk/Attack/Hurt/Faint by facing · 四向動畫狀態機（依朝向） |
+| `Player` | Thin wrapper: one class + swap `PlayerData` · 薄包裝，換資料即可換角 |
+
 ## Project structure / 目錄結構
 
 ```
@@ -175,17 +188,25 @@ shining-soul-2-web/
 │   └── audio/*.ogg           # placeholder SFX + BGM
 └── src/
     ├── main.ts
-    ├── heroes.ts             # Eric / Prim / Raizen stats
+    ├── heroes.ts             # deprecated re-export → data/players
+    ├── data/
+    │   ├── types.ts          # PlayerData, Facing, AnimSetKeys, …
+    │   └── players/          # eric.ts / prim.ts / raizen.ts + index
+    ├── anim/
+    │   └── FourDirAnimController.ts
     ├── audio/GameAudio.ts
     ├── ai/TilePathfinder.ts  # grid A* + PathFollower
-    ├── input/InputState.ts   # keyboard (if any) + touch → one frame
+    ├── input/InputState.ts   # keyboard + touch → one frame
     ├── ui/TouchControls.ts   # on-screen stick + ATK / E / R / ☰
     ├── scenes/
     │   ├── BootScene.ts
     │   ├── SelectScene.ts
     │   └── GameScene.ts
     └── entities/
-        ├── Player.ts
+        ├── CharacterBase.ts
+        ├── PlayerBase.ts
+        ├── Player.ts         # thin PlayerBase wrapper
+        ├── EnemyBase.ts
         ├── Enemy.ts          # Paste
         └── Boss.ts           # Captain Gully
 ```
@@ -200,18 +221,25 @@ Edit the map in [Tiled](https://www.mapeditor.org/): open `public/assets/maps/du
 Ideas only — not implemented yet.  
 僅為想法，下列尚未實現：
 
-1. More rooms / stairs / simple loot table beyond one chest  
-   更多房間／樓梯／掉落表
-2. Distinct Prim / Raizen attack VFX (staff / shuriken feel) while keeping Space/Z  
+### Phase 2 follow-ups / 第二階段跟進
+1. **Charge attack** driven by `PlayerData` / weapon stub (hold ATK)  
+   依角色資料／武器 stub 的蓄力攻擊（長按 ATK）
+2. **Loot table** beyond one chest (drops use `str` / weapon permissions)  
+   掉落表（可接 `str`／武器權限 stub）
+3. Wire `stats.str` into slash damage instead of flat 1  
+   將 `stats.str` 接入揮砍傷害
+
+### Other / 其他
+4. More rooms / stairs  
+   更多房間／樓梯
+5. Distinct Prim / Raizen attack VFX (staff / shuriken) while keeping Space/Z  
    職業差異化攻擊表現（仍用 Space/Z）
-3. Replace placeholder BGM/SFX with GBAMusRippy tracks for personal testing  
+6. Replace placeholder BGM/SFX with GBAMusRippy for personal testing  
    個人測試用原曲替換佔位音頻
-4. Save selected class + gold across **R** (or a soft continue)  
+7. Save selected class + gold across **R**  
    跨重開保留職業／金幣
-5. Tune attack frame picks / optional 8-dir from the same sheets  
-   微調攻擊幀／可選八向
-6. Wizard / other class sheets if ripped for personal use  
-   其他職業表（僅限個人學習素材）
+8. Wizard / other class = new `data/players/*.ts` + atlas (Phase 1 path)  
+   其他職業＝新資料檔 + 圖集（走第一階段路徑）
 
 ---
 

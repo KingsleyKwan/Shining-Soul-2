@@ -4,7 +4,7 @@ import { Enemy } from '../entities/Enemy';
 import { Boss } from '../entities/Boss';
 import { TilePathfinder } from '../ai/TilePathfinder';
 import { GameAudio, AUDIO_REGISTRY_KEY } from '../audio/GameAudio';
-import { getHero, SELECTED_HERO_KEY } from '../heroes';
+import { getHero, SELECTED_HERO_KEY } from '../data/players';
 import { InputState } from '../input/InputState';
 import { TouchControls } from '../ui/TouchControls';
 
