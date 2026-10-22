@@ -31,4 +31,10 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [BootScene, SelectScene, GameScene],
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+/** Stable bridge for DOM GAME OVER (and QA consoles) — outside scene lifecycle. */
+const w = window as Window & { __SS2_GAME__?: Phaser.Game };
+w.__SS2_GAME__ = game;
+
+export { game };
