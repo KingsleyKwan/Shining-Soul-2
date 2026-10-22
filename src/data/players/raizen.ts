@@ -7,6 +7,12 @@ export const RAIZEN_DATA: PlayerData = {
   subtitle: 'Ninja · +speed',
   stats: { maxHp: 4, str: 3, speed: 135 },
   weapons: { allowedTypes: ['kunai'] },
+  activeSkill: {
+    id: 'shadow_flurry',
+    labelZh: '影襲連斬',
+    cooldownMs: 2500,
+    kind: 'shadow_flurry',
+  },
   anim: {
     atlas: 'raizen',
     prefix: 'raizen',

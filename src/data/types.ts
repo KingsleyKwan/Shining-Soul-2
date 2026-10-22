@@ -34,6 +34,16 @@ export type AnimSetKeys = {
   deathLastFrame: string;
 };
 
+export type ActiveSkillKind = 'dash_smash' | 'arc_bolt' | 'shadow_flurry';
+
+export type ActiveSkillDef = {
+  id: string;
+  /** HK Traditional Chinese label shown on HUD */
+  labelZh: string;
+  cooldownMs: number;
+  kind: ActiveSkillKind;
+};
+
 export type PlayerData = {
   id: string;
   label: string;
@@ -41,6 +51,8 @@ export type PlayerData = {
   stats: CharacterStats;
   weapons: WeaponPermissions;
   anim: AnimSetKeys;
+  /** Primary active skill (Q / SKILL). Stub slots can be added later. */
+  activeSkill: ActiveSkillDef;
 };
 
 /**

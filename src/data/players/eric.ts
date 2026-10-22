@@ -7,6 +7,12 @@ export const ERIC_DATA: PlayerData = {
   subtitle: 'Warrior · balanced',
   stats: { maxHp: 5, str: 3, speed: 110 },
   weapons: { allowedTypes: ['sword'] },
+  activeSkill: {
+    id: 'power_smash',
+    labelZh: '強力斬擊',
+    cooldownMs: 2800,
+    kind: 'dash_smash',
+  },
   anim: {
     atlas: 'eric',
     prefix: 'eric',

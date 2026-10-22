@@ -7,6 +7,12 @@ export const PRIM_DATA: PlayerData = {
   subtitle: 'Priestess · +HP',
   stats: { maxHp: 7, str: 2, speed: 100 },
   weapons: { allowedTypes: ['staff'] },
+  activeSkill: {
+    id: 'arc_bolt',
+    labelZh: '奧術飛彈',
+    cooldownMs: 2200,
+    kind: 'arc_bolt',
+  },
   anim: {
     atlas: 'prim',
     prefix: 'prim',
