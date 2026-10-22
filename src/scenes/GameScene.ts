@@ -31,8 +31,8 @@ export class GameScene extends Phaser.Scene {
   private touch!: TouchControls;
   private inputState!: InputState;
   private leaving = false;
-  private hitThisSwing = new Set<Hostile>();
   private hpHud!: Phaser.GameObjects.Text;
+  private skillHud!: Phaser.GameObjects.Text;
   private roomHud!: Phaser.GameObjects.Text;
   private goldHud!: Phaser.GameObjects.Text;
   private gold = 0;
@@ -154,8 +154,8 @@ export class GameScene extends Phaser.Scene {
     this.inputState = new InputState(this);
 
     const help = this.touch.enabled
-      ? 'Stick · hold ATK charge · E · R · ☰'
-      : 'WASD · hold Space/Z charge · E chest · M · R · Esc';
+      ? 'Stick · hold ATK charge · 技 · E · R · ☰'
+      : 'WASD · hold Space/Z charge · Q skill · E chest · M · R · Esc';
 
     this.add
       .text(8, 8, help, {
@@ -180,8 +180,20 @@ export class GameScene extends Phaser.Scene {
       .setDepth(100);
     this.refreshHpHud(this.player.hp, this.player.maxHp);
 
-    this.roomHud = this.add
+    this.skillHud = this.add
       .text(8, 40, '', {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        color: '#ffffff',
+        backgroundColor: '#00000088',
+        padding: { x: 4, y: 3 },
+      })
+      .setScrollFactor(0)
+      .setDepth(100);
+    this.refreshSkillHud();
+
+    this.roomHud = this.add
+      .text(8, 56, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#c8e0ff',
@@ -193,7 +205,7 @@ export class GameScene extends Phaser.Scene {
     this.refreshRoomHud();
 
     this.add
-      .text(8, 56, `Class ${this.player.hero.label}`, {
+      .text(8, 72, `Class ${this.player.hero.label}`, {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#d0ffd0',
@@ -204,7 +216,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(100);
 
     this.goldHud = this.add
-      .text(8, 72, '', {
+      .text(8, 88, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#ffe066',
@@ -216,7 +228,7 @@ export class GameScene extends Phaser.Scene {
     this.refreshGoldHud();
 
     this.invHud = this.add
-      .text(8, 104, '', {
+      .text(8, 120, '', {
         fontFamily: 'monospace',
         fontSize: '9px',
         color: '#c8e8ff',
@@ -240,7 +252,7 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     this.muteHud = this.add
-      .text(8, 88, '', {
+      .text(8, 104, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#aaaacc',
@@ -271,6 +283,7 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     try {
       this.inputState.update(this.touch.poll());
+      this.refreshSkillHud();
 
       // Always process restart/menu — including during GAME OVER.
       if (this.inputState.restartPressed) {
@@ -611,6 +624,17 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBounds(r.x, r.y, r.w, r.h);
   }
 
+  private refreshSkillHud(): void {
+    const hud = this.skillHud;
+    if (!hud?.active || !this.player?.active) return;
+    const skill = this.player.getActiveSkill();
+    const rem = this.player.getSkillCooldownRemainingMs();
+    const status = rem <= 0 ? '就緒' : `${(Math.ceil(rem / 100) / 10).toFixed(1)}s`;
+    const text = `技 ${skill.labelZh} [Q] ${status}`;
+    if (hud.text !== text) hud.setText(text);
+    hud.setTint(rem <= 0 ? 0xffe8a0 : 0xa8b0c4);
+  }
+
   private refreshHpHud(hp: number, max: number): void {
     const hud = this.hpHud;
     if (!hud || !hud.active || !hud.scene) return;
@@ -785,13 +809,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private wireHitbox(zone: Phaser.GameObjects.Zone): void {
-    this.hitThisSwing.clear();
+    // Per-swing set: a new spawn (Raizen pulse, or the next slash) can hit again.
+    // A bolt keeps its own set so a later swing does not re-arm it.
+    const hit = new Set<Hostile>();
     this.physics.add.overlap(zone, this.hostiles, (_z, obj) => {
       const hostile = obj as Hostile;
-      if (!hostile.active || this.hitThisSwing.has(hostile)) return;
-      this.hitThisSwing.add(hostile);
+      if (!hostile.active || hit.has(hostile)) return;
+      hit.add(hostile);
       const dmg = (zone.getData('damage') as number | undefined) ?? this.player.getSlashDamage(0);
-      hostile.takeDamage(dmg, this.player.x, this.player.y);
+      const iframeMs = zone.getData('iframeMs') as number | undefined;
+      if (typeof iframeMs === 'number') hostile.takeDamage(dmg, this.player.x, this.player.y, iframeMs);
+      else hostile.takeDamage(dmg, this.player.x, this.player.y);
     });
   }
 }

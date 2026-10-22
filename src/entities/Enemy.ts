@@ -66,14 +66,17 @@ export class Enemy extends EnemyBase {
     return 280;
   }
 
-  /** @returns true if damage was applied this call */
-  override takeDamage(amount: number, fromX: number, fromY: number): boolean {
+  /**
+   * @param iframeMs Hurt gate after this hit. Omit to keep the Paste iframe.
+   * @returns true if damage was applied this call
+   */
+  override takeDamage(amount: number, fromX: number, fromY: number, iframeMs = IFRAME_MS): boolean {
     if (this.dying || !this.active) return false;
 
     const now = this.scene.time.now;
     if (now < this.iframeUntil) return false;
 
-    this.iframeUntil = now + IFRAME_MS;
+    this.iframeUntil = now + iframeMs;
     this.hurtUntil = now + 280;
     this.hp = Math.max(0, this.hp - amount);
     this.refreshHpUi();
@@ -97,7 +100,7 @@ export class Enemy extends EnemyBase {
     if (this.hp <= 0) {
       this.startDeath();
     } else {
-      this.scene.time.delayedCall(IFRAME_MS, () => {
+      this.scene.time.delayedCall(iframeMs, () => {
         if (this.active && !this.dying) this.clearTint();
       });
     }

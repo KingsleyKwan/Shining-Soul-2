@@ -92,14 +92,17 @@ export class Boss extends EnemyBase {
     this.hpBarFg.fillColor = ratio > 0.5 ? 0xdd4444 : ratio > 0.25 ? 0xdd8844 : 0x882222;
   }
 
-  /** @returns true if damage applied */
-  override takeDamage(amount: number, fromX: number, fromY: number): boolean {
+  /**
+   * @param iframeMs Hurt gate after this hit. Omit to keep the boss iframe.
+   * @returns true if damage applied
+   */
+  override takeDamage(amount: number, fromX: number, fromY: number, iframeMs = IFRAME_MS): boolean {
     if (this.dying || !this.active) return false;
 
     const now = this.scene.time.now;
     if (now < this.iframeUntil) return false;
 
-    this.iframeUntil = now + IFRAME_MS;
+    this.iframeUntil = now + iframeMs;
     this.hurtUntil = now + 320;
     this.attackingUntil = 0;
     this.hp = Math.max(0, this.hp - amount);
@@ -113,7 +116,7 @@ export class Boss extends EnemyBase {
     if (this.hp <= 0) {
       this.startDeath();
     } else {
-      this.scene.time.delayedCall(IFRAME_MS, () => {
+      this.scene.time.delayedCall(iframeMs, () => {
         if (this.active && !this.dying) this.clearTint();
       });
     }
