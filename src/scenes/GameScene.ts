@@ -115,6 +115,8 @@ export class GameScene extends Phaser.Scene {
       onDeath: () => this.showGameOver(),
     });
     this.physics.add.collider(this.player, walls);
+    // Brief spawn grace so Room A boss/slimes do not delete a fresh run in seconds.
+    this.player.grantSpawnGrace(2000);
 
     this.enemies = this.add.group({ runChildUpdate: true });
     this.hostiles = this.add.group();
@@ -284,13 +286,18 @@ export class GameScene extends Phaser.Scene {
   private restartRun(): void {
     if (this.leaving) return;
     this.leaving = true;
-    this.scene.restart();
+    // Defer out of the input callback so ScenePlugin shutdown is clean.
+    this.time.delayedCall(0, () => {
+      this.scene.restart();
+    });
   }
 
   private backToSelect(): void {
     if (this.leaving) return;
     this.leaving = true;
-    this.scene.start('SelectScene');
+    this.time.delayedCall(0, () => {
+      this.scene.start('SelectScene');
+    });
   }
 
   private spawnPaste(
@@ -570,13 +577,18 @@ export class GameScene extends Phaser.Scene {
   private showGameOver(): void {
     if (this.gameOver) return;
     this.gameOver = true;
+    // Allow a fresh restart even if a prior leaving flag got stuck mid-shutdown.
+    this.leaving = false;
 
     const { width, height } = this.scale;
+    // Full-screen interactive hit target (depth below touch UI 1200, above world).
+    // Prior bug: non-interactive overlay + input.once could miss taps / race leaving.
     const bg = this.add
       .rectangle(width / 2, height / 2, width, height, 0x000000, 0.55)
       .setScrollFactor(0)
-      .setDepth(200);
-    const title = this.add
+      .setDepth(200)
+      .setInteractive({ useHandCursor: true });
+    this.add
       .text(width / 2, height / 2 - 12, 'GAME OVER', {
         fontFamily: 'monospace',
         fontSize: '18px',
@@ -586,7 +598,7 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(201);
     const hint = this.add
-      .text(width / 2, height / 2 + 14, 'Press R or tap to restart', {
+      .text(width / 2, height / 2 + 20, 'R / 點按重開 · Esc / ☰ 選角', {
         fontFamily: 'monospace',
         fontSize: '11px',
         color: '#e8eef5',
@@ -595,15 +607,28 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(201);
 
-    this.add.container(0, 0, [bg, title, hint]).setDepth(200);
-    // Tap the overlay to restart. The ☰ button still returns to select, same as Esc.
-    this.input.once(
-      'pointerdown',
-      (_pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
-        if (over?.[0]?.getData('touchUi') === 'menu') return;
-        this.restartRun();
-      },
-    );
+    // Defer accept so the death-frame pointer / held ATK cannot eat the first restart.
+    let accept = false;
+    this.time.delayedCall(350, () => {
+      accept = true;
+      hint.setText('R / 點按重開 · Esc / ☰ 選角');
+    });
+    hint.setText('…');
+
+    const tryRestart = () => {
+      if (!accept || this.leaving) return;
+      this.restartRun();
+    };
+    const trySelect = () => {
+      if (!accept || this.leaving) return;
+      this.backToSelect();
+    };
+
+    bg.on('pointerdown', tryRestart);
+
+    // Direct keyboard (more reliable than JustDown alone after long fights).
+    this.input.keyboard?.on('keydown-R', tryRestart);
+    this.input.keyboard?.on('keydown-ESC', trySelect);
   }
 
   private propString(

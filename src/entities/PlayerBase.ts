@@ -15,7 +15,8 @@ const PLAYER_IFRAME_MS = 550;
 const HURT_STUN_MS = 300;
 
 /** ms held → charge stage (1 cyan, 2 yellow, 3 red). Below stage1 = tap/normal. */
-const CHARGE_STAGE_MS = [280, 600, 1000] as const;
+/** Faster stages so red (3) is reachable ~0.65s. */
+const CHARGE_STAGE_MS = [160, 380, 620] as const;
 const CHARGE_COLORS = [0x44ddff, 0xffee44, 0xff4444] as const;
 
 /** Move + attack hold/release. Keyboard and touch both feed this. */
@@ -111,6 +112,11 @@ export class PlayerBase extends CharacterBase {
   suppressNextAttack(): void {
     this.skipAttackOnce = true;
     this.cancelCharge();
+  }
+
+  /** Temporary iframes after (re)spawn so nearby hostiles cannot delete the run instantly. */
+  grantSpawnGrace(ms: number): void {
+    this.iframeUntil = Math.max(this.iframeUntil, this.scene.time.now + ms);
   }
 
   /**
@@ -217,9 +223,14 @@ export class PlayerBase extends CharacterBase {
     }
 
     if (!this.attacking) {
-      const moving = Math.abs(vx) + Math.abs(vy) > 1;
       this.animCtl.setFacing(this.facing);
-      this.animCtl.playWalk(moving);
+      if (this.charging && this.chargeStage >= 1) {
+        // Hold idle facing while the ring is up — avoids walk-flip afterimage look.
+        this.animCtl.playIdle();
+      } else {
+        const moving = Math.abs(vx) + Math.abs(vy) > 1;
+        this.animCtl.playWalk(moving);
+      }
     }
 
     if (!this.attacking && this.iframeUntil > this.scene.time.now) {
@@ -335,11 +346,15 @@ export class PlayerBase extends CharacterBase {
     body.setAllowGravity(false);
     body.setImmovable(true);
 
-    const color = stage >= 3 ? 0xff4444 : stage === 2 ? 0xffee44 : stage === 1 ? 0x44ddff : 0xffee88;
-    const g = this.scene.add.graphics().setDepth(20);
-    g.lineStyle(1 + Math.min(2, stage), color, 0.75);
-    g.strokeRect(zone.x - w / 2, zone.y - h / 2, w, h);
-    zone.setData('debugGfx', g);
+    // Subtle slash flash only for charged stages (tap = no yellow rect clutter).
+    let g: Phaser.GameObjects.Graphics | undefined;
+    if (stage >= 1) {
+      const color = stage >= 3 ? 0xff4444 : stage === 2 ? 0xffcc44 : 0x44ddff;
+      g = this.scene.add.graphics().setDepth(20);
+      g.lineStyle(2, color, 0.55);
+      g.strokeRect(zone.x - w / 2, zone.y - h / 2, w, h);
+      zone.setData('debugGfx', g);
+    }
     zone.setData('damage', damage);
     zone.setData('chargeStage', stage);
 
