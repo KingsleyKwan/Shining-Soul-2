@@ -41,8 +41,8 @@ python3 tools/gen_placeholder_audio.py
 
 ## Controls / 操作
 
-Desktop keys are unchanged. Touch controls appear only on touch-capable devices (joystick + buttons, fixed to the screen). Keyboard and touch can be used together.
-桌面鍵位不變。可觸屏時才顯示搖桿和按鈕（不隨鏡頭滾動）。兩者可同時使用。
+Desktop adds **Q** for the active skill. Touch controls appear only on touch-capable devices (joystick + buttons, fixed to the screen) and include **技**. Keyboard and touch can be used together.
+桌面新增 **Q** 主動技能。可觸屏時才顯示搖桿和按鈕（不隨鏡頭滾動），並含 **技**。兩者可同時使用。
 
 ### Character select / 選角（SelectScene）
 
@@ -60,6 +60,7 @@ Desktop keys are unchanged. Touch controls appear only on touch-capable devices 
 |--------------|---------------|
 | **WASD** / **Arrow keys** | Move / 四向移動 |
 | **Space** / **Z** | Tap = attack; **hold** = charge 1–3 (cyan→yellow→red) / 輕點攻擊；**長按**蓄力 1–3 段（青→黃→紅） |
+| **Q** | Active skill / 主動技能（冷卻） |
 | **E**（near chest） | Open Room B chest / 開 B 房寶箱 |
 | **Space**（when chest prompt shows） | Same as **E** / 有提示時等同開箱（不揮刀） |
 | Walk into **door** | Fade + teleport to other room / 淡入淡出傳送 |
@@ -77,6 +78,7 @@ Shown when the device reports touch (`maxTouchPoints`, a coarse pointer, or Phas
 |----------------|---------------|
 | Joystick（bottom-left / 左下） | Move / 移動（鬆開歸零，拖出底盤仍有效） |
 | **ATK**（bottom-right / 右下） | Tap or **hold** to charge / 輕點或**長按**蓄力（同 Space / Z） |
+| **技**（above **E** / E 上方） | Active skill / 主動技能（同 **Q**，有冷卻） |
 | **E**（beside ATK / 攻擊鍵旁） | Open chest / 開箱（同鍵盤 E） |
 | **R**（top-right / 右上） | Restart / 重開 |
 | **☰** | Back to select / 返回選角（同 Esc） |
@@ -105,6 +107,11 @@ Accurate to the code — nothing beyond what is implemented.
 | **Raizen** Ninja | 4 | **135** | Faster / 更快移動 |
 
 Each has walk + attack + hurt + death anims from their atlas（各有行走／攻擊／受傷／死亡動畫）.
+
+Each hero has one active skill（主動技能，**Q** / **技**，HUD 顯示冷卻）:
+- **Eric** — 強力斬擊（前衝＋範圍重擊）
+- **Prim** — 奧術飛彈（直線飛彈）
+- **Raizen** — 影襲連斬（三連斬）
 
 ### Combat / 戰鬥
 
@@ -161,7 +168,7 @@ Mechanics are decoupled from character data so a future hero is mostly **new dat
 |--------------|-------------|
 | `CharacterBase` | Shared move / collide / hurt / HP / facing · 共用移動、碰撞、受傷、生命、朝向 |
 | `PlayerBase` / `EnemyBase` | Player & enemy extensions · 玩家／敵人延伸 |
-| `data/players/*.ts` (`PlayerData`) | id, stats (HP/STR/speed), weapon stub, anim set keys · 角色資料 |
+| `data/players/*.ts` (`PlayerData`) | id, stats (HP/STR/speed), weapon stub, anim set keys, active skill · 角色資料＋主動技能 |
 | `FourDirAnimController` | Idle/Walk/Attack/Hurt/Faint by facing · 四向動畫狀態機（依朝向） |
 | `Player` | Thin wrapper: one class + swap `PlayerData` · 薄包裝，換資料即可換角 |
 
@@ -216,8 +223,8 @@ shining-soul-2-web/
     │   └── FourDirAnimController.ts
     ├── audio/GameAudio.ts
     ├── ai/TilePathfinder.ts  # grid A* + PathFollower
-    ├── input/InputState.ts   # keyboard + touch → one frame
-    ├── ui/TouchControls.ts   # on-screen stick + ATK / E / R / ☰
+    ├── input/InputState.ts   # keyboard + touch → one frame (incl. Q / 技)
+    ├── ui/TouchControls.ts   # on-screen stick + ATK / 技 / E / R / ☰
     ├── scenes/
     │   ├── BootScene.ts
     │   ├── SelectScene.ts
@@ -245,12 +252,18 @@ Ideas only — not implemented yet.
 Charge stages + STR damage; affix loot + inventory stub.  
 蓄力段數＋力量傷害；詞綴掉落＋背包 stub。
 
+### Done — active skill stub / 主動技能 stub 已完成
+One active skill per hero + cooldown HUD（**Q** / **技**）. Not a skill tree.  
+每位英雄一個主動技能＋冷卻 HUD。不是技能樹。
+- Eric 強力斬擊 · Prim 奧術飛彈 · Raizen 影襲連斬
+
 ### Next ideas / 下一步想法
 1. Full inventory UI (equip/compare) · 完整背包介面  
 2. More rooms / stairs · 更多房間／樓梯  
 3. Distinct Prim / Raizen charge VFX · 職業蓄力特效  
 4. Persist gold / bag across **R** · 跨重開保留金幣／背包  
 5. Wizard = new `data/players/*.ts` + atlas · 新職業資料檔  
+6. Skill tree / extra skill slots · 技能樹／額外技能槽  
 
 ---
 
