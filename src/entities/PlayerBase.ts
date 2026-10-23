@@ -11,8 +11,8 @@ const HITBOX_W = 28;
 const HITBOX_H = 28;
 const HITBOX_REACH = 22;
 
-const PLAYER_IFRAME_MS = 550;
-const HURT_STUN_MS = 300;
+const PLAYER_IFRAME_MS = 800;
+const HURT_STUN_MS = 320;
 
 /** ms held → charge stage (1 cyan, 2 yellow, 3 red). Below stage1 = tap/normal. */
 /** Faster stages so red (3) is reachable ~0.65s. */
@@ -185,7 +185,8 @@ export class PlayerBase extends CharacterBase {
   }
 
   protected override getKnockbackSpeed(): number {
-    return 100;
+    // Stronger push-out so corridor / boss contact is less of a death ball.
+    return 140;
   }
 
   protected override getHurtStunMs(): number {
@@ -360,14 +361,20 @@ export class PlayerBase extends CharacterBase {
   private cancelCharge(): void {
     this.charging = false;
     this.chargeStage = 0;
-    this.chargeGfx?.clear();
+    // Destroy (not just clear) so a charge-release frame cannot leave a ring "ghost clone".
+    if (this.chargeGfx) {
+      this.chargeGfx.destroy();
+      this.chargeGfx = undefined;
+    }
   }
 
   private startAttack(stage: number): void {
     GameAudio.get(this.scene)?.slash();
     this.attacking = true;
     this.setVelocity(0, 0);
+    // Drop any charge-ring residue and reset flip before attack sheet plays.
     this.animCtl.setFacing(this.facing);
+    this.animCtl.playIdle();
     this.animCtl.playAttack();
     this.spawnHitbox(stage);
   }

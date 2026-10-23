@@ -11,7 +11,7 @@ const DEATH_FLASH_MS = 180;
 const CHASE_SPEED = 58;
 const AGGRO_RANGE = 150;
 const ATTACK_RANGE = 22;
-const ATTACK_COOLDOWN_MS = 1000;
+const ATTACK_COOLDOWN_MS = 1250;
 
 /**
  * Paste enemy (SS2 slime) — chase + melee with tile A* pathfinding.

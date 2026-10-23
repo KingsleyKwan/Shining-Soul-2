@@ -12,7 +12,7 @@ const DEATH_FLASH_MS = 400;
 const CHASE_SPEED = 42;
 const AGGRO_RANGE = 200;
 const ATTACK_RANGE = 30;
-const ATTACK_COOLDOWN_MS = 1100;
+const ATTACK_COOLDOWN_MS = 1350;
 /** Chip damage so Eric (5 HP) survives more than two lunges. */
 const ATTACK_DAMAGE = 1;
 const LUNGE_SPEED = 120;
@@ -43,28 +43,29 @@ export class Boss extends EnemyBase {
     body.setOffset(12, 2);
     body.setMaxVelocity(CHASE_SPEED, CHASE_SPEED);
 
+    // HK 繁中 name only — no English "BOSS", no solid nameplate behind the text.
     this.label = scene.add
-      .text(x, y - 36, '蓋利隊長', {
+      .text(x, y - 38, '蓋利隊長', {
         fontFamily: 'monospace',
         fontSize: '9px',
         color: '#ffcc66',
         stroke: '#000000',
-        strokeThickness: 2,
+        strokeThickness: 3,
       })
       .setOrigin(0.5)
-      .setDepth(12);
+      .setDepth(13);
 
     this.createHpUi({
       barWidth: 36,
-      barY: 28,
-      textY: 22,
+      barY: 26,
+      textY: 34,
       barColor: 0xdd4444,
       textColor: '#ffe8e8',
     });
-    // Boss HP bar sits above label depth
-    this.hpBarBg?.setDepth(11);
+    // Dark thin bar under the name; avoid a bright block that reads as a white plate.
+    this.hpBarBg?.setDepth(11).setFillStyle(0x101010, 0.9);
     this.hpBarFg?.setDepth(12);
-    this.hpText?.setDepth(12);
+    this.hpText?.setDepth(13);
 
     this.play('gully-idle-down', true);
   }
@@ -258,7 +259,7 @@ export class Boss extends EnemyBase {
 
     this.updateAi(time);
 
-    this.label?.setPosition(this.x, this.y - 36);
+    this.label?.setPosition(this.x, this.y - 38);
     this.syncHpUiPositions();
     this.flashIframeTint(time, 40);
   }
