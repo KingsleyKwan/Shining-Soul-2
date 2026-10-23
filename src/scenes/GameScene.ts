@@ -648,7 +648,7 @@ export class GameScene extends Phaser.Scene {
   private refreshInvHud(): void {
     const line = this.inventory.hudLine();
     const mods = this.inventory.modsHudLine();
-    this.invHud?.setText(`${line}\n${mods}`);
+    this.invHud?.setText(mods ? `${line}\n${mods}` : line);
   }
 
   private setInventoryOpen(open: boolean): void {
@@ -665,9 +665,13 @@ export class GameScene extends Phaser.Scene {
       } catch {
         /* ignore */
       }
+      // Panel sits right of the left HUD; hide bag/mods line so it is not clipped under dim.
+      this.invHud?.setVisible(false);
       this.inventoryPanel.open(this.inventory);
     } else {
       this.inventoryPanel.close();
+      this.invHud?.setVisible(true);
+      this.refreshInvHud();
       // Do not resume if GAME OVER / stage clear already owns the pause.
       if (!this.gameOver && !this.stageClearVisible) {
         try {
@@ -680,17 +684,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   private equipBagItem(uid: string): void {
+    const before = this.inventory.getBag().find((it) => it.uid === uid);
     if (!this.inventory.equipFromBag(uid)) return;
     this.player.applyGearMods(this.inventory.getMods());
     this.refreshInvHud();
     this.inventoryPanel.refresh(this.inventory);
+    if (before) this.showLootToast(`裝備 ${before.nameZh}`);
   }
 
   private unequipSlot(slot: EquipSlot): void {
+    const prev = this.inventory.getEquipped(slot);
     if (!this.inventory.unequip(slot)) return;
     this.player.applyGearMods(this.inventory.getMods());
     this.refreshInvHud();
     this.inventoryPanel.refresh(this.inventory);
+    if (prev) this.showLootToast(`卸下 ${prev.nameZh}`);
   }
 
   private refreshGoldHud(): void {

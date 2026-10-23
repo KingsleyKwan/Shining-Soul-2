@@ -104,7 +104,13 @@ export class Inventory {
 
   modsHudLine(): string {
     const m = this.getMods();
-    return `裝 +傷${m.damage} 速${fmtSigned(m.speed)} 力${fmtSigned(m.str)} 命${fmtSigned(m.maxHp)}`;
+    const parts: string[] = [];
+    if (m.damage) parts.push(`傷${fmtSigned(m.damage)}`);
+    if (m.speed) parts.push(`速${fmtSigned(m.speed)}`);
+    if (m.str) parts.push(`力${fmtSigned(m.str)}`);
+    if (m.maxHp) parts.push(`命${fmtSigned(m.maxHp)}`);
+    if (!parts.length) return '';
+    return `裝 ${parts.join(' ')}`;
   }
 
   private equippedCount(): number {
