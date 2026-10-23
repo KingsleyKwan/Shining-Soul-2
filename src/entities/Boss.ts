@@ -13,7 +13,8 @@ const CHASE_SPEED = 42;
 const AGGRO_RANGE = 200;
 const ATTACK_RANGE = 30;
 const ATTACK_COOLDOWN_MS = 1100;
-const ATTACK_DAMAGE = 2;
+/** Chip damage so Eric (5 HP) survives more than two lunges. */
+const ATTACK_DAMAGE = 1;
 const LUNGE_SPEED = 120;
 const LUNGE_MS = 160;
 
@@ -37,8 +38,9 @@ export class Boss extends EnemyBase {
     this.setBounce(0);
 
     const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setSize(14, 16);
-    body.setOffset(9, 14);
+    // 37px frame @ scale 2. Opaque silhouette is about x12–34, y2–30; the old 14×16 torso missed most swings.
+    body.setSize(22, 28);
+    body.setOffset(12, 2);
     body.setMaxVelocity(CHASE_SPEED, CHASE_SPEED);
 
     this.label = scene.add

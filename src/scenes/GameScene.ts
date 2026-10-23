@@ -68,7 +68,8 @@ export class GameScene extends Phaser.Scene {
   private player!: Player;
   private enemies!: Phaser.GameObjects.Group;
   private boss?: Boss;
-  private hostiles!: Phaser.GameObjects.Group;
+  /** Arcade group: overlap needs collisionCategory / collisionMask (plain Groups lack both). */
+  private hostiles!: Phaser.Physics.Arcade.Group;
   private touch!: TouchControls;
   private inputState!: InputState;
   private leaving = false;
@@ -171,7 +172,11 @@ export class GameScene extends Phaser.Scene {
     this.player.grantSpawnGrace(2000);
 
     this.enemies = this.add.group({ runChildUpdate: true });
-    this.hostiles = this.add.group();
+    // Physics group so slash / charge / Prim bolt / Raizen flurry overlap can call takeDamage.
+    // Empty defaults: Pastes and the boss already have bodies — do not enable a second one
+    // or stamp max velocity / world-bounds over the constructor settings.
+    this.hostiles = this.physics.add.group();
+    this.hostiles.defaults = {} as Phaser.Physics.Arcade.Group['defaults'];
 
     for (const p of this.spawns.enemies) {
       this.spawnPaste(p.x, p.y, p.hp, p.room, walls);
@@ -1045,17 +1050,17 @@ export class GameScene extends Phaser.Scene {
         { ...tile(18, 26), room: 'a', hp: 2 },
         { ...tile(62, 7), room: 'c', hp: 3 },
         { ...tile(78, 8), room: 'c', hp: 3 },
-        { ...tile(60, 26), room: 'c', hp: 3 },
+        { ...tile(56, 28), room: 'c', hp: 3 },
         { ...tile(88, 58), room: 'b', hp: 2 },
       ],
       boss: tile(126, 18),
       chest: tile(80, 50),
       exit: tile(116, 5),
       doors: [
-        doorAt(45, 14, 3, 3, 'spawn_c_west', 'c'),
-        doorAt(48, 14, 3, 3, 'spawn_a', 'a'),
-        doorAt(92, 14, 3, 3, 'spawn_boss', 'boss'),
-        doorAt(96, 14, 3, 3, 'spawn_c_east', 'c'),
+        doorAt(45, 14, 3, 4, 'spawn_c_west', 'c'),
+        doorAt(48, 14, 3, 4, 'spawn_a', 'a'),
+        doorAt(92, 14, 3, 4, 'spawn_boss', 'boss'),
+        doorAt(96, 14, 3, 4, 'spawn_c_east', 'c'),
         doorAt(69, 28, 3, 4, 'spawn_b', 'b'),
         doorAt(69, 32, 3, 3, 'spawn_c_south', 'c'),
       ],
