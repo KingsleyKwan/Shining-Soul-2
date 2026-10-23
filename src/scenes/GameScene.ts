@@ -12,6 +12,7 @@ import { TouchControls } from '../ui/TouchControls';
 import { InventoryPanel } from '../ui/InventoryPanel';
 import { hideGameOverDom, showGameOverDom } from '../ui/GameOverDom';
 import { hideStageClearDom, showStageClearDom } from '../ui/StageClearDom';
+import { hideLootToastDom, showLootToastDom } from '../ui/LootToastDom';
 
 /** Anything the player slash can damage. */
 type Hostile = Enemy | Boss;
@@ -22,10 +23,10 @@ type RoomId = 'a' | 'c' | 'b' | 'boss';
 const ROOM_ORDER: RoomId[] = ['a', 'c', 'b', 'boss'];
 
 const ROOM_LABELS: Record<RoomId, string> = {
-  a: 'Entry · 營地大廳',
-  c: 'Corridor · 戰鬥迴廊',
-  b: 'Chest · 寶箱房',
-  boss: 'Boss · 競技場',
+  a: '營地大廳',
+  c: '戰鬥迴廊',
+  b: '寶箱房',
+  boss: '蓋利隊長 · 競技場',
 };
 
 /** Default Paste HP when the map object has no hp property. */
@@ -119,9 +120,11 @@ export class GameScene extends Phaser.Scene {
     // Always clear DOM overlays left from a prior death or stage clear.
     hideGameOverDom();
     hideStageClearDom();
+    hideLootToastDom();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       hideGameOverDom();
       hideStageClearDom();
+      hideLootToastDom();
     });
     this.gameOver = false;
     this.bossDefeated = false;
@@ -214,7 +217,7 @@ export class GameScene extends Phaser.Scene {
 
     const help = this.touch.enabled
       ? 'Stick · hold ATK · 技 · E · 包 · R · ☰'
-      : 'WASD · hold Space/Z · Q · E chest · I/Tab bag · M · R · Esc';
+      : 'WASD · hold Space/Z · Q · E 寶箱 · I/Tab 包 · M · R · Esc';
 
     this.add
       .text(8, 8, help, {
@@ -308,7 +311,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.chestPrompt = this.add
-      .text(0, 0, 'E / Space — Open', {
+      .text(0, 0, 'E 開啟', {
         fontFamily: 'monospace',
         fontSize: '9px',
         color: '#fff8d0',
@@ -519,7 +522,7 @@ export class GameScene extends Phaser.Scene {
     this.chestPos = { x, y };
     this.chestGfx = this.add.graphics().setDepth(5);
     this.chestLabel = this.add
-      .text(x, y - 18, 'chest', {
+      .text(x, y - 18, '寶箱', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#ffe8b0',
@@ -561,7 +564,7 @@ export class GameScene extends Phaser.Scene {
       g.fillRect(x - 5, y - 2, 10, 5);
     }
     if (this.chestLabel) {
-      this.chestLabel.setText(opened ? 'opened' : 'chest');
+      this.chestLabel.setText(opened ? '已開啟' : '寶箱');
       this.chestLabel.setColor(opened ? '#a0a0a0' : '#ffe8b0');
     }
   }
@@ -614,11 +617,11 @@ export class GameScene extends Phaser.Scene {
     this.giveItem(item);
 
     const parts: string[] = [];
-    if (healed > 0) parts.push(`+${healed} HP`);
-    else parts.push('HP full');
-    parts.push(`+${goldGain} gold`);
+    if (healed > 0) parts.push(`+${healed} 生命`);
+    else parts.push('生命已滿');
+    parts.push(`+${goldGain} 金幣`);
     parts.push(formatItemToast(item));
-    this.showLootToast(parts.join('  ·  '));
+    this.showLootToast(parts.filter(Boolean).join(' · '));
   }
 
   private tryEnemyDrop(x: number, y: number, chance: number): void {
@@ -706,43 +709,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showLootToast(msg: string): void {
-    const { width, height } = this.scale;
-    // Top-center, screen-fixed — stay clear of the player sprite mid-screen.
-    const y0 = Math.min(36, Math.max(8, height * 0.06));
-    const toast = this.add
-      .text(width / 2, y0 + 8, msg, {
-        fontFamily: 'monospace',
-        fontSize: '11px',
-        color: '#ffe066',
-        backgroundColor: '#000000cc',
-        padding: { x: 8, y: 5 },
-        align: 'center',
-        wordWrap: { width: width - 24 },
-      })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(160)
-      .setAlpha(0);
-
-    this.tweens.add({
-      targets: toast,
-      alpha: 1,
-      y: y0,
-      duration: 250,
-      ease: 'Back.easeOut',
-      onComplete: () => {
-        this.time.delayedCall(1100, () => {
-          if (!toast.active) return;
-          this.tweens.add({
-            targets: toast,
-            alpha: 0,
-            y: y0 - 8,
-            duration: 280,
-            onComplete: () => toast.destroy(),
-          });
-        });
-      },
-    });
+    // DOM toast at bottom-center — clears top hint HUD and inventory overlay.
+    showLootToastDom(msg);
   }
 
   private setupDoors(): void {

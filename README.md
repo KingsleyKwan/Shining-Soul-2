@@ -125,8 +125,8 @@ Each hero has one active skill（主動技能，**Q** / **技**，HUD 顯示冷�
   戰鬥迴廊：3 隻 Paste（HP 3）。連接入口、寶箱與 Boss 門。
 - **Chest / 寶箱房**: **1×** weaker Paste (HP 2) + openable chest  
   寶箱房：1 隻弱 Paste（HP 2）+ 可開寶箱
-- **Boss / 競技場**: **Captain Gully** alone (HP 14, melee **2** dmg + short lunge). Defeat opens the **出口**.  
-  Boss 房只有蓋利隊長（HP 14，傷害 2）。擊破後開啟出口。
+- **Boss / 競技場**: **蓋利隊長** alone (HP 14, melee **1** dmg + short lunge). Defeat opens the **出口**.  
+  Boss 房只有蓋利隊長（HP 14，傷害 1）。擊破後開啟出口。
 - Walk into the exit → **關卡清除** overlay（重新開始 / 選角 / 繼續）  
   走進出口顯示關卡清除
 - Spawn grace ~2s so a fresh run is not contact-killed  

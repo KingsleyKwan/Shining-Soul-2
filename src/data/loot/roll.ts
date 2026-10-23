@@ -95,8 +95,8 @@ export function rollItem(rng: () => number = Math.random, opts?: RollOptions): R
 }
 
 export function formatItemToast(item: RolledItem): string {
-  // No plain "·" for normal — chest toast already joins parts with " · ".
+  // HK 繁中 only — avoid "EN / ZH" slash that stacked with toast " · " separators.
   const tag =
     item.rarity === 'rare' ? '★ ' : item.rarity === 'magic' ? '◆ ' : '';
-  return `${tag}${item.nameEn} / ${item.nameZh}`;
+  return `${tag}${item.nameZh}`;
 }
