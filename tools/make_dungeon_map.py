@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
-"""Regenerate dungeon tileset + two-chamber Tiled map.
+"""Regenerate dungeon tileset + one-stage Tiled map.
 
 Tiles are ORIGINAL placeholders (cool GBA dungeon palette).
 GIDs: 1 void, 2 floorA, 3 floorB, 4 wall, 5 wall-top, 6 pillar, 7 door
 
-Map: 80×28 @ 16px — Room A (cols 0–39 combat) | Room B (cols 40–79 quiet)
-Doorway in the shared wall; Tiled objects handle teleport targets.
+Map: 144×64 @ 16px (2304×1024). Four rooms, camera clamps per room:
+
+    [ A entry 48×32 ][ C corridor 48×32 ][ Boss arena 48×32 ]
+                     [ B chest   48×32 ]
+
+Doors (2-tile openings) teleport via Tiled objects (target + room).
+Pastes sit off the door lanes. Captain Gully is alone in the boss arena.
+An exit marker (inactive until the boss dies) sits on the arena's north side.
 
 Run: python3 tools/make_dungeon_map.py
 """
 from __future__ import annotations
 
 import json
+from collections import deque
 from pathlib import Path
 
 from PIL import Image
@@ -22,8 +29,22 @@ TILE = 16
 N = 7  # includes door tile
 
 VOID, F1, F2, WALL, WTOP, PILLAR, DOOR = 1, 2, 3, 4, 5, 6, 7
-ROOM_W, H = 40, 28
-W = ROOM_W * 2  # 80
+
+# Inclusive tile bounds.
+ROOMS = {
+    "a": (0, 0, 47, 31),
+    "c": (48, 0, 95, 31),
+    "b": (48, 32, 95, 63),
+    "boss": (96, 0, 143, 31),
+}
+ROOM_W = 48
+ROOM_H = 32
+W = ROOM_W * 3  # 144
+H = ROOM_H * 2  # 64
+
+# Paste aggro is 150px; boss aggro is 200px. Keep spawns outside that.
+PASTE_AGGRO = 150
+BOSS_AGGRO = 200
 
 
 def px(img, x, y, c):
@@ -89,7 +110,6 @@ def draw_void(img, ox, oy):
 
 
 def draw_door(img, ox, oy):
-    # Stone arch / door marker on floor-ish mid tone
     draw_floor(img, ox, oy, 1)
     wood = (92, 64, 40, 255)
     wood_hi = (120, 88, 52, 255)
@@ -102,18 +122,22 @@ def draw_door(img, ox, oy):
     px(img, ox + TILE - 5, oy + TILE // 2, iron)
 
 
-def fill_room_shell(setg, x0, x1):
-    """Outer walls for a room spanning inclusive tile cols [x0, x1]."""
-    for y in range(H):
+def fill_room_shell(setg, x0, x1, y0, y1, floor="checker"):
+    """Outer walls. Top lip is two tiles (cap + inner) so vertical doors must cut both."""
+    for y in range(y0, y1 + 1):
         for x in range(x0, x1 + 1):
-            setg("ground", x, y, F1 if (x + y) % 2 == 0 else F2)
+            if floor == "boss":
+                gid = F2 if (x * 2 + y) % 3 else F1
+            else:
+                gid = F1 if (x + y) % 2 == 0 else F2
+            setg("ground", x, y, gid)
     for x in range(x0, x1 + 1):
-        setg("walls", x, 0, WTOP)
-        setg("walls", x, 1, WALL)
-        setg("walls", x, H - 1, WALL)
-        setg("ground", x, 0, VOID)
-        setg("ground", x, H - 1, VOID)
-    for y in range(H):
+        setg("walls", x, y0, WTOP)
+        setg("walls", x, y0 + 1, WALL)
+        setg("walls", x, y1, WALL)
+        setg("ground", x, y0, VOID)
+        setg("ground", x, y1, VOID)
+    for y in range(y0, y1 + 1):
         setg("walls", x0, y, WALL)
         setg("walls", x1, y, WALL)
         setg("ground", x0, y, VOID)
@@ -132,86 +156,141 @@ def main():
     draw_door(sheet, TILE * 6, 0)
     sheet.save(OUT / "dungeon-tiles.png")
 
-    ground = [0] * (W * H)
+    ground = [VOID] * (W * H)
     walls = [0] * (W * H)
 
     def setg(which, x, y, gid):
         if 0 <= x < W and 0 <= y < H:
             (ground if which == "ground" else walls)[y * W + x] = gid
 
-    # --- Room A (combat) cols 0..39 ---
-    fill_room_shell(setg, 0, 39)
-    for x in range(8, 14):
-        setg("walls", x, 8, WALL)
-        setg("walls", x, 18, WALL)
-    for x in range(26, 32):
-        setg("walls", x, 8, WALL)
-        setg("walls", x, 18, WALL)
-    for y in range(8, 12):
-        setg("walls", 8, y, WALL)
-        setg("walls", 31, y, WALL)
-    for y in range(15, 19):
-        setg("walls", 8, y, WALL)
-        setg("walls", 31, y, WALL)
-    setg("walls", 15, 13, PILLAR)
-    setg("walls", 24, 13, PILLAR)
+    def hwall(x0, x1, y, gid=WALL):
+        for x in range(x0, x1 + 1):
+            setg("walls", x, y, gid)
 
-    # --- Room B (quiet) cols 40..79 ---
-    fill_room_shell(setg, 40, 79)
-    # Soft interior décor pillars
-    setg("walls", 50, 10, PILLAR)
-    setg("walls", 68, 10, PILLAR)
-    setg("walls", 50, 18, PILLAR)
-    setg("walls", 68, 18, PILLAR)
-    # Chest alcove (small wall stubs)
-    for x in range(58, 63):
-        setg("walls", x, 8, WALL)
+    def vwall(x, y0, y1, gid=WALL):
+        for y in range(y0, y1 + 1):
+            setg("walls", x, y, gid)
 
-    # Shared dividing wall already from room shells at x=39 and x=40.
-    # Cut a doorway (2 tiles tall) and place door tiles on ground.
-    door_ys = (13, 14)
-    for y in door_ys:
-        setg("walls", 39, y, 0)
-        setg("walls", 40, y, 0)
-        setg("ground", 39, y, DOOR)
-        setg("ground", 40, y, DOOR)
+    def pillar(x, y):
+        setg("walls", x, y, PILLAR)
 
-    # Spawns / doors / markers (pixel coords)
+    ax0, ay0, ax1, ay1 = ROOMS["a"]
+    cx0, cy0, cx1, cy1 = ROOMS["c"]
+    bx0, by0, bx1, by1 = ROOMS["b"]
+    gx0, gy0, gx1, gy1 = ROOMS["boss"]
+
+    fill_room_shell(setg, ax0, ax1, ay0, ay1)
+    fill_room_shell(setg, cx0, cx1, cy0, cy1)
+    fill_room_shell(setg, bx0, bx1, by0, by1)
+    fill_room_shell(setg, gx0, gx1, gy0, gy1, floor="boss")
+
+    # --- Décor. Keep the east-west lane (y=15..16) and the chest lane (x=70..71) open. ---
+    # Entry camp: north/south stubs and pillars, away from the east door.
+    hwall(6, 12, 6)
+    hwall(6, 12, 26)
+    pillar(14, 8)
+    pillar(14, 24)
+    pillar(26, 10)
+
+    # Combat corridor: broken walls that leave door approaches clear.
+    hwall(58, 66, 10)
+    hwall(74, 82, 22)
+    vwall(68, 6, 12)
+    vwall(78, 18, 24)
+    pillar(74, 10)
+    pillar(66, 24)
+
+    # Chest room: side pillars, alcove east of the chest (chest is tile 80,50).
+    pillar(56, 40)
+    pillar(56, 56)
+    pillar(90, 44)
+    hwall(84, 90, 46)
+
+    # Boss arena ring — west of the ring stays open for the door.
+    pillar(108, 8)
+    pillar(132, 10)
+    pillar(108, 24)
+    pillar(132, 24)
+    pillar(120, 26)
+
+    # Door openings LAST so décor cannot seal them.
+    # Horizontal: both rooms' shared wall columns. Vertical: bottom wall + top lip (2 tiles).
+    def link_h(x_west, x_east, ys):
+        for x in (x_west, x_east):
+            for y in ys:
+                setg("walls", x, y, 0)
+                setg("ground", x, y, DOOR)
+
+    def link_v(xs, ys):
+        for x in xs:
+            for y in ys:
+                setg("walls", x, y, 0)
+                setg("ground", x, y, DOOR)
+
+    link_h(47, 48, (15, 16))  # A east ↔ C west
+    link_h(95, 96, (15, 16))  # C east ↔ Boss west
+    link_v((70, 71), (31, 32, 33))  # C south ↔ B north (incl. inner top wall)
+
+    def prop(name, value):
+        if isinstance(value, bool):
+            typ = "bool"
+        elif isinstance(value, int) and not isinstance(value, bool):
+            typ = "int"
+        else:
+            typ = "string"
+        return {"name": name, "type": typ, "value": value}
+
+    oid = 1
+
+    def obj(name, typ, tx, ty, w_tiles=1, h_tiles=1, props=None):
+        nonlocal oid
+        entry = {
+            "id": oid,
+            "name": name,
+            "type": typ,
+            "x": tx * TILE,
+            "y": ty * TILE,
+            "width": w_tiles * TILE,
+            "height": h_tiles * TILE,
+            "rotation": 0,
+            "visible": True,
+        }
+        oid += 1
+        if props:
+            entry["properties"] = [prop(k, v) for k, v in props.items()]
+        return entry
+
+    # Trigger rects sit on the walkable approach PLUS the opening tiles.
+    # Arrival spawns are several tiles inside, clear of the trigger and of Paste aggro.
     objects = [
-        # Room A
-        {"id": 1, "name": "player", "type": "spawn", "x": 20 * TILE, "y": 14 * TILE,
-         "width": 16, "height": 16, "rotation": 0, "visible": True},
-        {"id": 2, "name": "enemy1", "type": "enemy", "x": 26 * TILE, "y": 14 * TILE,
-         "width": 16, "height": 16, "rotation": 0, "visible": True},
-        {"id": 3, "name": "enemy2", "type": "enemy", "x": 12 * TILE, "y": 16 * TILE,
-         "width": 16, "height": 16, "rotation": 0, "visible": True},
-        {"id": 4, "name": "boss", "type": "boss", "x": 20 * TILE, "y": 10 * TILE,
-         "width": 16, "height": 16, "rotation": 0, "visible": True},
-        # Door A → B (stand near east door in room A)
-        {"id": 5, "name": "door_to_b", "type": "door", "x": 37 * TILE, "y": 13 * TILE,
-         "width": 32, "height": 32, "rotation": 0, "visible": True,
-         "properties": [
-             {"name": "target", "type": "string", "value": "spawn_b"},
-             {"name": "room", "type": "string", "value": "b"},
-         ]},
-        {"id": 6, "name": "spawn_a", "type": "spawn", "x": 35 * TILE, "y": 14 * TILE,
-         "width": 16, "height": 16, "rotation": 0, "visible": True},
-        # Room B
-        {"id": 7, "name": "spawn_b", "type": "spawn", "x": 44 * TILE, "y": 14 * TILE,
-         "width": 16, "height": 16, "rotation": 0, "visible": True},
-        {"id": 8, "name": "door_to_a", "type": "door", "x": 41 * TILE, "y": 13 * TILE,
-         "width": 32, "height": 32, "rotation": 0, "visible": True,
-         "properties": [
-             {"name": "target", "type": "string", "value": "spawn_a"},
-             {"name": "room", "type": "string", "value": "a"},
-         ]},
-        {"id": 9, "name": "enemy_b1", "type": "enemy", "x": 60 * TILE, "y": 16 * TILE,
-         "width": 16, "height": 16, "rotation": 0, "visible": True,
-         "properties": [{"name": "room", "type": "string", "value": "b"}]},
-        {"id": 10, "name": "chest", "type": "chest", "x": 60 * TILE, "y": 10 * TILE,
-         "width": 16, "height": 16, "rotation": 0, "visible": True},
+        # --- A entry / camp ---
+        obj("player", "spawn", 10, 16, props={"room": "a"}),
+        obj("enemy_a1", "enemy", 30, 24, props={"room": "a", "hp": 2}),
+        obj("door_a_to_c", "door", 45, 14, 3, 3, {"target": "spawn_c_west", "room": "c"}),
+        obj("spawn_a", "spawn", 40, 15, props={"room": "a"}),
+        # --- C corridor ---
+        obj("door_c_to_a", "door", 48, 14, 3, 3, {"target": "spawn_a", "room": "a"}),
+        obj("spawn_c_west", "spawn", 56, 15, props={"room": "c"}),
+        obj("enemy_c1", "enemy", 62, 7, props={"room": "c", "hp": 3}),
+        obj("enemy_c2", "enemy", 78, 8, props={"room": "c", "hp": 3}),
+        obj("enemy_c3", "enemy", 60, 26, props={"room": "c", "hp": 3}),
+        obj("door_c_to_boss", "door", 92, 14, 3, 3, {"target": "spawn_boss", "room": "boss"}),
+        obj("spawn_c_east", "spawn", 86, 15, props={"room": "c"}),
+        obj("door_c_to_b", "door", 69, 28, 3, 4, {"target": "spawn_b", "room": "b"}),
+        obj("spawn_c_south", "spawn", 70, 21, props={"room": "c"}),
+        # --- B chest ---
+        obj("door_b_to_c", "door", 69, 32, 3, 3, {"target": "spawn_c_south", "room": "c"}),
+        obj("spawn_b", "spawn", 70, 42, props={"room": "b"}),
+        obj("chest", "chest", 80, 50, props={"room": "b"}),
+        obj("enemy_b1", "enemy", 88, 58, props={"room": "b", "hp": 2}),
+        # --- Boss arena ---
+        obj("door_boss_to_c", "door", 96, 14, 3, 3, {"target": "spawn_c_east", "room": "c"}),
+        obj("spawn_boss", "spawn", 105, 15, props={"room": "boss"}),
+        obj("boss", "boss", 126, 18, props={"room": "boss"}),
+        obj("exit", "exit", 116, 5, props={"room": "boss"}),
     ]
 
+    rw, rh = ROOM_W * TILE, ROOM_H * TILE
     tiled = {
         "compressionlevel": -1,
         "height": H,
@@ -225,10 +304,12 @@ def main():
         "version": "1.10",
         "tiledversion": "1.10.2",
         "nextlayerid": 4,
-        "nextobjectid": 11,
+        "nextobjectid": oid,
         "properties": [
-            {"name": "roomA", "type": "string", "value": "0,0,640,448"},
-            {"name": "roomB", "type": "string", "value": "640,0,640,448"},
+            prop("roomA", f"0,0,{rw},{rh}"),
+            prop("roomC", f"{rw},0,{rw},{rh}"),
+            prop("roomB", f"{rw},{rh},{rw},{rh}"),
+            prop("roomBoss", f"{rw * 2},0,{rw},{rh}"),
         ],
         "tilesets": [{
             "columns": N,
@@ -248,15 +329,120 @@ def main():
              "width": W, "height": H, "x": 0, "y": 0, "data": ground},
             {"id": 2, "name": "walls", "type": "tilelayer", "visible": True, "opacity": 1,
              "width": W, "height": H, "x": 0, "y": 0, "data": walls,
-             "properties": [{"name": "collides", "type": "bool", "value": True}]},
+             "properties": [prop("collides", True)]},
             {"id": 3, "name": "spawns", "type": "objectgroup", "visible": True, "opacity": 1,
              "x": 0, "y": 0, "objects": objects},
         ],
     }
+
+    validate(walls, objects)
+
     for name in ("dungeon-room.json", "dungeon-room.tmj"):
         with open(OUT / name, "w") as f:
             json.dump(tiled, f, indent=2)
-    print(f"Wrote two-chamber map {W}x{H} @ {TILE}px → {OUT}")
+    print(f"Wrote stage map {W}x{H} @ {TILE}px ({W * TILE}x{H * TILE}) → {OUT}")
+
+
+def validate(walls, objects):
+    def blocked(tx, ty):
+        if not (0 <= tx < W and 0 <= ty < H):
+            return True
+        return walls[ty * W + tx] != 0
+
+    def center(o):
+        return (
+            o["x"] + o["width"] / 2,
+            o["y"] + o["height"] / 2,
+        )
+
+    def tile_of(o):
+        cx, cy = center(o)
+        return int(cx // TILE), int(cy // TILE)
+
+    by_name = {o["name"]: o for o in objects}
+    doors = [o for o in objects if o["type"] == "door"]
+    spawns = [o for o in objects if o["type"] == "spawn"]
+    enemies = [o for o in objects if o["type"] == "enemy"]
+    boss = by_name["boss"]
+    exit_o = by_name["exit"]
+    chest = by_name["chest"]
+
+    for o in spawns + enemies + [boss, exit_o, chest, by_name["player"]]:
+        tx, ty = tile_of(o)
+        if blocked(tx, ty):
+            raise SystemExit(f"{o['name']} is inside a wall at {tx},{ty}")
+
+    for d in doors:
+        target = next(p["value"] for p in d["properties"] if p["name"] == "target")
+        room = next(p["value"] for p in d["properties"] if p["name"] == "room")
+        if target not in by_name:
+            raise SystemExit(f"{d['name']} target {target} missing")
+        if room not in ("a", "c", "b", "boss"):
+            raise SystemExit(f"{d['name']} bad room {room}")
+        # Trigger must not contain the arrival spawn.
+        dest = by_name[target]
+        dx0, dy0 = d["x"], d["y"]
+        dx1, dy1 = dx0 + d["width"], dy0 + d["height"]
+        cx, cy = center(dest)
+        if dx0 <= cx <= dx1 and dy0 <= cy <= dy1:
+            raise SystemExit(f"{target} sits inside {d['name']}")
+
+    def dist(a, b):
+        ax, ay = center(a)
+        bx, by = center(b)
+        return ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
+
+    # Same-room arrival spawns must start outside aggro so doors stay walkable.
+    room_of = {}
+    for o in objects:
+        props = {p["name"]: p["value"] for p in o.get("properties", [])}
+        if "room" in props:
+            room_of[o["name"]] = props["room"]
+
+    for e in enemies:
+        for s in spawns:
+            if room_of.get(e["name"]) != room_of.get(s["name"]):
+                continue
+            d = dist(e, s)
+            if d < PASTE_AGGRO + 8:
+                raise SystemExit(f"{e['name']} aggro-overlaps {s['name']} ({d:.0f}px)")
+
+    for s in spawns:
+        if room_of.get(s["name"]) != "boss":
+            continue
+        d = dist(boss, s)
+        if d < BOSS_AGGRO + 16:
+            raise SystemExit(f"boss aggro-overlaps {s['name']} ({d:.0f}px)")
+
+    # Player must not share the boss room.
+    if room_of["player"] == room_of["boss"]:
+        raise SystemExit("player and boss share a room")
+
+    # 4-neighbour walk: rooms connect only through door gaps (void must stay sealed).
+    start = tile_of(by_name["player"])
+    goal_names = ["boss", "chest", "exit", "spawn_a", "spawn_b", "spawn_c_west", "spawn_c_east", "spawn_c_south", "spawn_boss"]
+    goals = {tile_of(by_name[n]): n for n in goal_names}
+    seen = {start}
+    q = deque([start])
+    found = set()
+    while q:
+        x, y = q.popleft()
+        if (x, y) in goals:
+            found.add(goals[(x, y)])
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if not (0 <= nx < W and 0 <= ny < H):
+                continue
+            if blocked(nx, ny) or (nx, ny) in seen:
+                continue
+            seen.add((nx, ny))
+            q.append((nx, ny))
+    missing = [n for n in goal_names if n not in found]
+    if missing:
+        raise SystemExit(f"unreachable from player: {missing}")
+    # A void tile under room A must NOT be reachable (no leak around the shell).
+    if (0, 40) in seen:
+        raise SystemExit("map leaks into the void outside the rooms")
+    print(f"Validated doors, aggro spacing, and path to {', '.join(goal_names)}")
 
 
 if __name__ == "__main__":

@@ -10,18 +10,52 @@ import { Inventory } from '../systems/Inventory';
 import { InputState } from '../input/InputState';
 import { TouchControls } from '../ui/TouchControls';
 import { hideGameOverDom, showGameOverDom } from '../ui/GameOverDom';
+import { hideStageClearDom, showStageClearDom } from '../ui/StageClearDom';
 
 /** Anything the player slash can damage. */
 type Hostile = Enemy | Boss;
 
-type RoomId = 'a' | 'b';
+/** a entry, c combat corridor, b chest, boss arena. */
+type RoomId = 'a' | 'c' | 'b' | 'boss';
+
+const ROOM_ORDER: RoomId[] = ['a', 'c', 'b', 'boss'];
+
+const ROOM_LABELS: Record<RoomId, string> = {
+  a: 'Entry · 營地大廳',
+  c: 'Corridor · 戰鬥迴廊',
+  b: 'Chest · 寶箱房',
+  boss: 'Boss · 競技場',
+};
+
+/** Default Paste HP when the map object has no hp property. */
+const PASTE_HP: Record<RoomId, number> = {
+  a: 2,
+  c: 3,
+  b: 2,
+  boss: 3,
+};
 
 type Rect = { x: number; y: number; w: number; h: number };
+type SpawnPoint = { x: number; y: number };
+type EnemySpawn = SpawnPoint & { room: RoomId; hp: number };
+type DoorSpawn = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  target: string;
+  room: RoomId;
+};
+
+function isRoomId(value: string | undefined): value is RoomId {
+  return value === 'a' || value === 'c' || value === 'b' || value === 'boss';
+}
 
 /**
- * Two-chamber dungeon (one Tiled map).
- * Room A = combat (Pastes + Gully). Room B = quiet (1 Paste + chest).
- * Door objects teleport with a short fade; camera bounds clamp per room.
+ * One-stage dungeon (one Tiled map, camera clamps per room).
+ * Entry → combat corridor → chest room, and corridor → boss arena.
+ * Door objects teleport with a short fade. After Captain Gully falls,
+ * an exit portal in the arena opens the stage-clear overlay.
  */
 export class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -45,6 +79,10 @@ export class GameScene extends Phaser.Scene {
   private chestPrompt?: Phaser.GameObjects.Text;
   private gameOver = false;
   private bossDefeated = false;
+  private stageClearVisible = false;
+  /** Ignore the exit until the player walks off it (繼續 dismiss). */
+  private exitSuppress = false;
+  private exitActive = false;
   private transitioning = false;
   private currentRoom: RoomId = 'a';
   private rooms!: Record<RoomId, Rect>;
@@ -52,14 +90,14 @@ export class GameScene extends Phaser.Scene {
   private audio!: GameAudio;
   private muteHud!: Phaser.GameObjects.Text;
   private spawns!: {
-    player: { x: number; y: number };
-    spawnA: { x: number; y: number };
-    spawnB: { x: number; y: number };
-    enemiesA: { x: number; y: number }[];
-    enemiesB: { x: number; y: number }[];
-    boss?: { x: number; y: number };
-    chest?: { x: number; y: number };
-    doors: { x: number; y: number; w: number; h: number; target: string; room: RoomId }[];
+    player: SpawnPoint;
+    /** Arrival points keyed by Tiled object name (spawn_a, spawn_c_west, …). */
+    points: Record<string, SpawnPoint>;
+    enemies: EnemySpawn[];
+    boss?: SpawnPoint;
+    chest?: SpawnPoint;
+    exit?: SpawnPoint;
+    doors: DoorSpawn[];
   };
 
   constructor() {
@@ -67,10 +105,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Always clear DOM overlay / input bridges left from a prior death.
+    // Always clear DOM overlays left from a prior death or stage clear.
     hideGameOverDom();
+    hideStageClearDom();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      hideGameOverDom();
+      hideStageClearDom();
+    });
     this.gameOver = false;
     this.bossDefeated = false;
+    this.stageClearVisible = false;
+    this.exitSuppress = false;
+    this.exitActive = false;
     this.transitioning = false;
     this.currentRoom = 'a';
     this.chestOpened = false;
@@ -103,12 +149,8 @@ export class GameScene extends Phaser.Scene {
     // Full map physics bounds; camera clamps per room
     this.physics.world.setBounds(0, 0, worldW, worldH);
 
-    this.rooms = {
-      a: { x: 0, y: 0, w: worldW / 2, h: worldH },
-      b: { x: worldW / 2, y: 0, w: worldW / 2, h: worldH },
-    };
-
-    this.spawns = this.readSpawns(map, worldW, worldH);
+    this.rooms = this.readRooms(map);
+    this.spawns = this.readSpawns(map, this.rooms);
 
     const hero = getHero(this.registry.get(SELECTED_HERO_KEY) as string);
     this.player = new Player(this, this.spawns.player.x, this.spawns.player.y, hero);
@@ -118,17 +160,14 @@ export class GameScene extends Phaser.Scene {
       onDeath: () => this.showGameOver(),
     });
     this.physics.add.collider(this.player, walls);
-    // Brief spawn grace so Room A boss/slimes do not delete a fresh run in seconds.
+    // Brief spawn grace so a nearby Paste cannot delete a fresh run.
     this.player.grantSpawnGrace(2000);
 
     this.enemies = this.add.group({ runChildUpdate: true });
     this.hostiles = this.add.group();
 
-    for (const p of this.spawns.enemiesA) {
-      this.spawnPaste(p.x, p.y, 3, walls);
-    }
-    for (const p of this.spawns.enemiesB) {
-      this.spawnPaste(p.x, p.y, 2, walls); // weaker room-B paste
+    for (const p of this.spawns.enemies) {
+      this.spawnPaste(p.x, p.y, p.hp, walls);
     }
 
     if (this.spawns.boss) {
@@ -146,7 +185,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.setupDoors();
-    this.applyRoomCamera('a');
+    const startRoom = this.roomAt(this.spawns.player.x, this.spawns.player.y) ?? 'a';
+    this.applyRoomCamera(startRoom);
 
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
 
@@ -295,7 +335,17 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      if (!this.gameOver && !this.transitioning) {
+      if (this.exitSuppress && this.player && this.spawns?.exit) {
+        const far = Phaser.Math.Distance.Between(
+          this.player.x,
+          this.player.y,
+          this.spawns.exit.x,
+          this.spawns.exit.y,
+        );
+        if (far > 48) this.exitSuppress = false;
+      }
+
+      if (!this.gameOver && !this.transitioning && !this.stageClearVisible) {
         this.updateChestInteract();
         this.player.handleInput(this.inputState, delta);
       }
@@ -320,7 +370,10 @@ export class GameScene extends Phaser.Scene {
   private nuclearLeave(mode: 'restart' | 'select'): void {
     if (this.leaving) return;
     this.leaving = true;
+    this.stageClearVisible = false;
+    this.exitSuppress = false;
     hideGameOverDom();
+    hideStageClearDom();
     this.teardownGameOverInput();
 
     const game = this.game;
@@ -385,6 +438,7 @@ export class GameScene extends Phaser.Scene {
 
   private teardownGameOverInput(): void {
     hideGameOverDom();
+    hideStageClearDom();
   }
 
   private spawnPaste(
@@ -590,15 +644,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryUseDoor(targetSpawn: string, destRoom: RoomId): void {
-    if (this.transitioning || this.gameOver || this.player.isDead()) return;
+    if (this.transitioning || this.gameOver || this.stageClearVisible || this.player.isDead()) return;
     if (this.currentRoom === destRoom) return;
 
-    const dest =
-      targetSpawn === 'spawn_b'
-        ? this.spawns.spawnB
-        : targetSpawn === 'spawn_a'
-          ? this.spawns.spawnA
-          : null;
+    const dest = this.spawns.points[targetSpawn];
     if (!dest) return;
 
     this.transitioning = true;
@@ -648,7 +697,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshRoomHud(): void {
-    const label = this.currentRoom === 'a' ? 'Room A — Combat Hall' : 'Room B — Side Chamber';
+    let label = ROOM_LABELS[this.currentRoom] ?? this.currentRoom;
+    if (this.currentRoom === 'boss' && this.bossDefeated) label += ' · 出口已開';
     this.roomHud?.setText(label);
   }
 
@@ -656,34 +706,87 @@ export class GameScene extends Phaser.Scene {
     if (this.bossDefeated || this.gameOver) return;
     this.bossDefeated = true;
     this.audio.bossDefeat();
+    this.activateExit();
+    this.refreshRoomHud();
+    this.showLootToast('蓋利隊長已擊破 · 出口已開啟');
+  }
 
-    const { width } = this.scale;
-    const banner = this.add
-      .text(width / 2, 48, 'Captain Gully defeated!', {
-        fontFamily: 'monospace',
-        fontSize: '14px',
-        color: '#ffe066',
-        backgroundColor: '#000000aa',
-        padding: { x: 8, y: 5 },
-      })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(150)
-      .setAlpha(0);
+  /** Glowing exit. Overlap (only after the boss falls) opens the stage-clear panel. */
+  private activateExit(): void {
+    const pos = this.spawns.exit;
+    if (!pos || this.exitActive) return;
+    this.exitActive = true;
 
+    const glow = this.add.circle(pos.x, pos.y, 12, 0x3ee0ff, 0.7).setDepth(4);
+    const ring = this.add.circle(pos.x, pos.y, 16, 0x000000, 0).setDepth(4);
+    ring.setStrokeStyle(2, 0xd8ffff, 0.95);
     this.tweens.add({
-      targets: banner,
-      alpha: 1,
-      y: 40,
-      duration: 400,
-      ease: 'Back.easeOut',
+      targets: glow,
+      scale: 1.45,
+      alpha: 0.2,
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
     });
+
+    this.add
+      .text(pos.x, pos.y - 22, '出口', {
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        color: '#d8ffff',
+        stroke: '#001018',
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setDepth(12);
+
+    const zone = this.add.zone(pos.x, pos.y, 40, 40);
+    this.physics.add.existing(zone, true);
+    this.physics.add.overlap(this.player, zone, () => this.tryStageClear());
+  }
+
+  private tryStageClear(): void {
+    if (!this.exitActive || this.exitSuppress || this.stageClearVisible) return;
+    if (!this.bossDefeated || this.gameOver || this.transitioning || this.leaving) return;
+    if (this.player.isDead()) return;
+    this.showStageClear();
+  }
+
+  private showStageClear(): void {
+    if (this.stageClearVisible || this.gameOver || this.leaving) return;
+    this.stageClearVisible = true;
+    this.player.setVelocity(0, 0);
+    try {
+      this.physics.world.pause();
+    } catch {
+      /* ignore */
+    }
+    showStageClearDom({
+      restart: () => this.restartRun(),
+      select: () => this.backToSelect(),
+      continue: () => this.dismissStageClear(),
+    });
+  }
+
+  /** 繼續 — close the panel and let the player walk the cleared stage. */
+  private dismissStageClear(): void {
+    if (this.leaving) return;
+    hideStageClearDom();
+    this.stageClearVisible = false;
+    this.exitSuppress = true;
+    try {
+      this.physics.world.resume();
+    } catch {
+      /* ignore */
+    }
   }
 
   private showGameOver(): void {
     if (this.gameOver) return;
     this.gameOver = true;
     this.leaving = false;
+    this.stageClearVisible = false;
+    hideStageClearDom();
 
     // Freeze world so a wedged update loop is less likely; input is DOM-only now.
     try {
@@ -697,78 +800,174 @@ export class GameScene extends Phaser.Scene {
       restart: () => this.restartRun(),
       select: () => this.backToSelect(),
     });
+  }
 
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      hideGameOverDom();
-      this.teardownGameOverInput();
-    });
+  private propBag(
+    o: Phaser.Types.Tilemaps.TiledObject,
+  ): { name: string; value: unknown }[] {
+    const props = o.properties as { name: string; value: unknown }[] | Record<string, unknown> | undefined;
+    if (Array.isArray(props)) return props;
+    if (props && typeof props === 'object') {
+      return Object.entries(props).map(([name, value]) => ({ name, value }));
+    }
+    return [];
   }
 
   private propString(
     o: Phaser.Types.Tilemaps.TiledObject,
     key: string,
   ): string | undefined {
-    const props = o.properties as { name: string; value: unknown }[] | undefined;
-    if (!Array.isArray(props)) return undefined;
-    const p = props.find((x) => x.name === key);
+    const p = this.propBag(o).find((x) => x.name === key);
     return p ? String(p.value) : undefined;
+  }
+
+  private propNumber(
+    o: Phaser.Types.Tilemaps.TiledObject,
+    key: string,
+  ): number | undefined {
+    const p = this.propBag(o).find((x) => x.name === key);
+    if (!p) return undefined;
+    const n = Number(p.value);
+    return Number.isFinite(n) ? n : undefined;
+  }
+
+  private mapPropList(map: Phaser.Tilemaps.Tilemap): { name: string; value: unknown }[] {
+    const props = map.properties as { name: string; value: unknown }[] | Record<string, unknown> | undefined;
+    if (Array.isArray(props)) return props;
+    if (props && typeof props === 'object') {
+      return Object.entries(props).map(([name, value]) => ({ name, value }));
+    }
+    return [];
+  }
+
+  /** Room rects from map properties (roomA / roomC / roomB / roomBoss = "x,y,w,h"). */
+  private readRooms(map: Phaser.Tilemaps.Tilemap): Record<RoomId, Rect> {
+    const tw = map.tileWidth || 16;
+    const th = map.tileHeight || 16;
+    const rw = 48 * tw;
+    const rh = 32 * th;
+    const rooms: Record<RoomId, Rect> = {
+      a: { x: 0, y: 0, w: rw, h: rh },
+      c: { x: rw, y: 0, w: rw, h: rh },
+      b: { x: rw, y: rh, w: rw, h: rh },
+      boss: { x: rw * 2, y: 0, w: rw, h: rh },
+    };
+    const keyFor: Record<string, RoomId> = {
+      roomA: 'a',
+      roomC: 'c',
+      roomB: 'b',
+      roomBoss: 'boss',
+    };
+    for (const p of this.mapPropList(map)) {
+      const id = keyFor[p.name];
+      if (!id) continue;
+      const rect = this.parseRect(String(p.value));
+      if (rect) rooms[id] = rect;
+    }
+    return rooms;
+  }
+
+  private parseRect(raw: string): Rect | null {
+    const parts = raw.split(',').map((s) => Number(s.trim()));
+    if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null;
+    const [x, y, w, h] = parts;
+    if (w <= 0 || h <= 0) return null;
+    return { x, y, w, h };
+  }
+
+  private roomAt(x: number, y: number): RoomId | null {
+    for (const id of ROOM_ORDER) {
+      const r = this.rooms[id];
+      if (!r) continue;
+      if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return id;
+    }
+    return null;
+  }
+
+  private enemyRoom(o: Phaser.Types.Tilemaps.TiledObject, at: SpawnPoint): RoomId {
+    const tagged = this.propString(o, 'room');
+    if (isRoomId(tagged)) return tagged;
+    const name = o.name ?? '';
+    if (name.startsWith('enemy_boss') || name.includes('_boss')) return 'boss';
+    if (name.startsWith('enemy_b')) return 'b';
+    if (name.startsWith('enemy_c')) return 'c';
+    if (name.startsWith('enemy_a')) return 'a';
+    return this.roomAt(at.x, at.y) ?? 'a';
   }
 
   private readSpawns(
     map: Phaser.Tilemaps.Tilemap,
-    worldW: number,
-    worldH: number,
+    rooms: Record<RoomId, Rect>,
   ): GameScene['spawns'] {
-    const half = worldW / 2;
+    const tile = (tx: number, ty: number): SpawnPoint => ({
+      x: tx * (map.tileWidth || 16) + (map.tileWidth || 16) / 2,
+      y: ty * (map.tileHeight || 16) + (map.tileHeight || 16) / 2,
+    });
+    const doorAt = (tx: number, ty: number, wTiles: number, hTiles: number, target: string, room: RoomId): DoorSpawn => ({
+      x: tx * (map.tileWidth || 16),
+      y: ty * (map.tileHeight || 16),
+      w: wTiles * (map.tileWidth || 16),
+      h: hTiles * (map.tileHeight || 16),
+      target,
+      room,
+    });
+
+    // Mirrors tools/make_dungeon_map.py so a missing object layer still has a path.
     const fallback: GameScene['spawns'] = {
-      player: { x: half / 2, y: worldH / 2 },
-      spawnA: { x: half - 80, y: worldH / 2 },
-      spawnB: { x: half + 80, y: worldH / 2 },
-      enemiesA: [
-        { x: half / 2 + 96, y: worldH / 2 },
-        { x: half / 2 - 128, y: worldH / 2 + 32 },
+      player: tile(10, 16),
+      points: {
+        spawn_a: tile(40, 15),
+        spawn_c_west: tile(56, 15),
+        spawn_c_east: tile(86, 15),
+        spawn_c_south: tile(70, 21),
+        spawn_b: tile(70, 42),
+        spawn_boss: tile(105, 15),
+      },
+      enemies: [
+        { ...tile(30, 24), room: 'a', hp: 2 },
+        { ...tile(62, 7), room: 'c', hp: 3 },
+        { ...tile(78, 8), room: 'c', hp: 3 },
+        { ...tile(60, 26), room: 'c', hp: 3 },
+        { ...tile(88, 58), room: 'b', hp: 2 },
       ],
-      enemiesB: [{ x: half + half / 2, y: worldH / 2 + 32 }],
-      boss: { x: half / 2, y: worldH / 2 - 64 },
-      chest: { x: half + half / 2, y: worldH / 2 - 64 },
+      boss: tile(126, 18),
+      chest: tile(80, 50),
+      exit: tile(116, 5),
       doors: [
-        {
-          x: half - 48,
-          y: worldH / 2 - 16,
-          w: 32,
-          h: 32,
-          target: 'spawn_b',
-          room: 'b',
-        },
-        {
-          x: half + 16,
-          y: worldH / 2 - 16,
-          w: 32,
-          h: 32,
-          target: 'spawn_a',
-          room: 'a',
-        },
+        doorAt(45, 14, 3, 3, 'spawn_c_west', 'c'),
+        doorAt(48, 14, 3, 3, 'spawn_a', 'a'),
+        doorAt(92, 14, 3, 3, 'spawn_boss', 'boss'),
+        doorAt(96, 14, 3, 3, 'spawn_c_east', 'c'),
+        doorAt(69, 28, 3, 4, 'spawn_b', 'b'),
+        doorAt(69, 32, 3, 3, 'spawn_c_south', 'c'),
       ],
     };
 
     const layer = map.getObjectLayer('spawns');
     if (!layer) return fallback;
 
-    const center = (o: Phaser.Types.Tilemaps.TiledObject) => ({
+    const center = (o: Phaser.Types.Tilemaps.TiledObject): SpawnPoint => ({
       x: (o.x ?? 0) + (o.width ?? 0) / 2,
       y: (o.y ?? 0) + (o.height ?? 0) / 2,
     });
 
-    const byName = (n: string) => layer.objects.find((o) => o.name === n);
-
-    const playerObj = byName('player');
-    const spawnA = byName('spawn_a');
-    const spawnB = byName('spawn_b');
+    const playerObj = layer.objects.find((o) => o.name === 'player');
     const bossObj = layer.objects.find((o) => o.type === 'boss' || o.name === 'boss');
     const chestObj = layer.objects.find((o) => o.type === 'chest' || o.name === 'chest');
+    const exitObj = layer.objects.find((o) => o.type === 'exit' || o.name === 'exit');
 
-    const enemiesA: { x: number; y: number }[] = [];
-    const enemiesB: { x: number; y: number }[] = [];
+    const points: Record<string, SpawnPoint> = {};
+    for (const o of layer.objects) {
+      const name = o.name ?? '';
+      const isSpawn = o.type === 'spawn' || name.startsWith('spawn_');
+      if (!isSpawn || name === 'player' || !name) continue;
+      points[name] = center(o);
+    }
+    for (const [name, point] of Object.entries(fallback.points)) {
+      if (!points[name]) points[name] = point;
+    }
+
+    const enemies: EnemySpawn[] = [];
     for (const o of layer.objects) {
       const isEnemy =
         o.type === 'enemy' ||
@@ -776,34 +975,41 @@ export class GameScene extends Phaser.Scene {
         (o.name?.startsWith('enemy') ?? false) ||
         (o.name?.startsWith('dummy') ?? false);
       if (!isEnemy) continue;
-      const room = this.propString(o, 'room');
-      const c = center(o);
-      if (room === 'b' || (o.name?.startsWith('enemy_b') ?? false)) {
-        enemiesB.push(c);
-      } else {
-        enemiesA.push(c);
-      }
+      const at = center(o);
+      const room = this.enemyRoom(o, at);
+      const hp = this.propNumber(o, 'hp') ?? PASTE_HP[room];
+      enemies.push({ ...at, room, hp });
     }
 
-    const doors = layer.objects
-      .filter((o) => o.type === 'door' || o.name?.startsWith('door_'))
-      .map((o) => ({
+    const doors: DoorSpawn[] = [];
+    for (const o of layer.objects) {
+      if (!(o.type === 'door' || (o.name?.startsWith('door_') ?? false))) continue;
+      const room = this.propString(o, 'room');
+      const target = this.propString(o, 'target');
+      if (!isRoomId(room) || !target) continue;
+      doors.push({
         x: o.x ?? 0,
         y: o.y ?? 0,
         w: o.width ?? 32,
         h: o.height ?? 32,
-        target: this.propString(o, 'target') ?? 'spawn_b',
-        room: (this.propString(o, 'room') as RoomId) ?? 'b',
-      }));
+        target,
+        room,
+      });
+    }
+
+    const bossRoom = rooms.boss;
+    const exitFallback: SpawnPoint = {
+      x: bossRoom.x + bossRoom.w * 0.45,
+      y: bossRoom.y + 5 * (map.tileHeight || 16),
+    };
 
     return {
       player: playerObj ? center(playerObj) : fallback.player,
-      spawnA: spawnA ? center(spawnA) : fallback.spawnA,
-      spawnB: spawnB ? center(spawnB) : fallback.spawnB,
-      enemiesA: enemiesA.length ? enemiesA : fallback.enemiesA,
-      enemiesB: enemiesB.length ? enemiesB : fallback.enemiesB,
+      points,
+      enemies,
       boss: bossObj ? center(bossObj) : fallback.boss,
       chest: chestObj ? center(chestObj) : fallback.chest,
+      exit: exitObj ? center(exitObj) : exitFallback,
       doors: doors.length ? doors : fallback.doors,
     };
   }

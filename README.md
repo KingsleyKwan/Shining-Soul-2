@@ -61,13 +61,15 @@ Desktop adds **Q** for the active skill. Touch controls appear only on touch-cap
 | **WASD** / **Arrow keys** | Move / 四向移動 |
 | **Space** / **Z** | Tap = attack; **hold** = charge 1–3 (cyan→yellow→red) / 輕點攻擊；**長按**蓄力 1–3 段（青→黃→紅） |
 | **Q** | Active skill / 主動技能（冷卻） |
-| **E**（near chest） | Open Room B chest / 開 B 房寶箱 |
+| **E**（near chest） | Open the chest room chest / 開寶箱房寶箱 |
 | **Space**（when chest prompt shows） | Same as **E** / 有提示時等同開箱（不揮刀） |
-| Walk into **door** | Fade + teleport to other room / 淡入淡出傳送 |
+| Walk into **door** | Fade + teleport to the linked room / 淡入淡出傳送到相連房間 |
+| Walk into **出口**（after boss） | Stage Clear overlay / Boss 擊破後走進出口，顯示關卡清除 |
 | **M** | Mute / unmute SFX + BGM / 靜音開關（鍵盤） |
 | **R** | Restart dungeon（same class）/ 重開地牢（保留職業） |
 | **Esc** | Back to character select / 返回選角 |
 | Click / tap（on GAME OVER） | Restart / 遊戲結束後點擊或點按重開 |
+| **關卡清除** buttons | **重新開始** / **選角** / **繼續**（繼續只關掉面板） |
 
 ### Mobile touch / 觸屏
 
@@ -96,7 +98,7 @@ Accurate to the code — nothing beyond what is implemented.
 
 1. **BootScene** — load atlases, tilemap, placeholder audio, register anims  
 2. **SelectScene** — pick Eric / Prim / Raizen  
-3. **GameScene** — two-room dungeon
+3. **GameScene** — one stage: entry → corridor → chest, then boss arena → exit
 
 ### Heroes / 可玩角色
 
@@ -115,10 +117,18 @@ Each hero has one active skill（主動技能，**Q** / **技**，HUD 顯示冷�
 
 ### Combat / 戰鬥
 
-- Room A: **2× Paste** (HP 3, chase ~150px, melee 1 dmg) + boss **Captain Gully** (HP 14, melee **2** dmg + short lunge)  
-  A 房：2 隻 Paste（HP 3）+ Boss 蓋利隊長（HP 14，傷害 2）
-- Room B: **1×** weaker Paste (HP 2) + openable chest  
-  B 房：1 隻弱 Paste（HP 2）+ 可開寶箱
+- **Entry / 營地大廳**: **1×** weak Paste (HP 2). Player spawns here, away from the boss.  
+  入口營地：1 隻弱 Paste（HP 2）。玩家在此出生，不與 Boss 同房。
+- **Corridor / 戰鬥迴廊**: **3× Paste** (HP 3, chase ~150px, melee 1 dmg). Links entry, chest, and the boss door.  
+  戰鬥迴廊：3 隻 Paste（HP 3）。連接入口、寶箱與 Boss 門。
+- **Chest / 寶箱房**: **1×** weaker Paste (HP 2) + openable chest  
+  寶箱房：1 隻弱 Paste（HP 2）+ 可開寶箱
+- **Boss / 競技場**: **Captain Gully** alone (HP 14, melee **2** dmg + short lunge). Defeat opens the **出口**.  
+  Boss 房只有蓋利隊長（HP 14，傷害 2）。擊破後開啟出口。
+- Walk into the exit → **關卡清除** overlay（重新開始 / 選角 / 繼續）  
+  走進出口顯示關卡清除
+- Spawn grace ~2s so a fresh run is not contact-killed  
+  出生約 2 秒無敵，避免一進場被貼臉擊倒
 - Player HP HUD; at 0 → GAME OVER  
   玩家血量 HUD；歸零遊戲結束
 - Pastes / Gully: tile **A\*** pathfinding (~0.4–0.45s repath) around walls/pillars; axis-slide fallback  
@@ -126,12 +136,16 @@ Each hero has one active skill（主動技能，**Q** / **技**，HUD 顯示冷�
 
 ### World / 地圖
 
-- One Tiled map **80×28** @ 16px → **1280×448** (Room A | Room B)  
-  單張雙室地圖；鏡頭按房間夾取
+- One Tiled map **144×64** @ 16px → **2304×1024**. Top row: entry | corridor | boss arena (each 48×32). Chest room sits under the corridor.  
+  單張四區地圖；鏡頭按房間夾取
+- Clear path: **entry → corridor → chest**, and **corridor → boss → 出口**  
+  通關路線：入口 → 迴廊 → 寶箱房，以及迴廊 → Boss → 出口
 - Wall collision on `walls` layer; wooden door tiles + door objects teleport with fade  
   牆體碰撞；木門傳送帶淡入淡出
-- Room B chest: once per run → **+2 HP** (capped) + **25 gold** (HUD toast); resets on **R**  
+- Chest room: once per run → **+2 HP** (capped) + **25 gold** (HUD toast); resets on **R**  
   寶箱每局一次：回血 + 金幣；**R** 重置
+- After Gully dies, a glowing **出口** appears on the arena's north side. Overlap opens the stage-clear DOM (`data-testid=stageclear-overlay`). **繼續** dismisses it.  
+  蓋利擊破後，競技場北側出現發光出口。走進後顯示關卡清除；繼續只關閉面板。
 
 ### Audio / 音頻
 
@@ -202,7 +216,7 @@ shining-soul-2-web/
 │   ├── extract_raizen.py     # ninja atlas
 │   ├── extract_paste.py
 │   ├── extract_gully.py
-│   ├── make_dungeon_map.py   # tiles + 80×28 two-room JSON
+│   ├── make_dungeon_map.py   # tiles + 144×64 four-room JSON
 │   └── gen_placeholder_audio.py
 ├── public/assets/
 │   ├── eric-warrior.png | prim-priestess.png | raizen-ninja.png
@@ -225,6 +239,8 @@ shining-soul-2-web/
     ├── ai/TilePathfinder.ts  # grid A* + PathFollower
     ├── input/InputState.ts   # keyboard + touch → one frame (incl. Q / 技)
     ├── ui/TouchControls.ts   # on-screen stick + ATK / 技 / E / R / ☰
+    ├── ui/GameOverDom.ts     # DOM game-over overlay
+    ├── ui/StageClearDom.ts   # DOM 關卡清除 overlay
     ├── scenes/
     │   ├── BootScene.ts
     │   ├── SelectScene.ts
@@ -257,9 +273,13 @@ One active skill per hero + cooldown HUD（**Q** / **技**）. Not a skill tree.
 每位英雄一個主動技能＋冷卻 HUD。不是技能樹。
 - Eric 強力斬擊 · Prim 奧術飛彈 · Raizen 影襲連斬
 
+### Done — stage path / 關卡路線已完成
+Entry, combat corridor, chest room, boss arena, and an exit portal that opens **關卡清除**.  
+入口、戰鬥迴廊、寶箱房、Boss 競技場，以及通往關卡清除的出口。
+
 ### Next ideas / 下一步想法
 1. Full inventory UI (equip/compare) · 完整背包介面  
-2. More rooms / stairs · 更多房間／樓梯  
+2. Stairs / a second stage · 樓梯／第二關  
 3. Distinct Prim / Raizen charge VFX · 職業蓄力特效  
 4. Persist gold / bag across **R** · 跨重開保留金幣／背包  
 5. Wizard = new `data/players/*.ts` + atlas · 新職業資料檔  
