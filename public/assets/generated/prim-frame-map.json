@@ -2,7 +2,7 @@
   "source": "prim-priestess.png (Claire Starsword / The Spriters Resource)",
   "chroma": "RGB(151,167,151) tol=45",
   "walk_band": "y=1..31",
-  "attack_band": "y=400..432 (main pose row; avoids stacked clone bodies)",
+  "attack_band": "y=401..457 (pose row + lower left-contact; skip tear cells 14/17)",
   "death_band": "y=56..84",
   "hurt_band": "y=100..126",
   "walk_map": {
@@ -30,29 +30,30 @@
   "attack_map": {
     "attack_down": [
       0,
-      1,
-      7,
-      5
-    ],
-    "attack_right": [
-      8,
-      9,
-      10,
-      11
-    ],
-    "attack_up": [
-      13,
-      12,
-      14,
-      18
+      5,
+      6,
+      7
     ],
     "attack_left": [
+      8,
+      10,
+      11,
+      9
+    ],
+    "attack_up": [
+      4,
       15,
       16,
-      17,
-      6
-    ]
+      18
+    ],
+    "attack_right": "flip(attack_left)"
   },
+  "attack_right_from_left": [
+    0,
+    1,
+    2,
+    3
+  ],
   "hurt_map": {
     "hurt_down": 0,
     "hurt_right": 2,

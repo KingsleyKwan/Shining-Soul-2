@@ -27,13 +27,16 @@ WALK_MAP = {
     "walk_up": [4, 21, 22, 23, 24],
     "walk_left": [2, 9, 10, 12],
 }
-# Main pose row only (y=400..432). Upper row stacked into cells 0..2 caused clones.
+# Attack band y=401..457: main pose row + lower left-contact cell (y≈424).
+# Skip tear cells 14 & 17 (blue-orb / debris, not Prim body).
+# Sheet has no dedicated right-facing attack poses → flip left frames.
 ATK_MAP = {
-    "attack_down": [0, 1, 7, 5],
-    "attack_right": [8, 9, 10, 11],
-    "attack_up": [13, 12, 14, 18],
-    "attack_left": [15, 16, 17, 6],
+    "attack_down": [0, 5, 6, 7],
+    "attack_left": [8, 10, 11, 9],
+    "attack_up": [4, 15, 16, 18],
 }
+# Indices into ATK_MAP["attack_left"]; packed as horizontally flipped frames.
+ATK_RIGHT_FROM_LEFT = [0, 1, 2, 3]
 HURT_MAP = {
     "hurt_down": 0,
     "hurt_right": 2,
@@ -94,11 +97,11 @@ def main():
     swoosh = mask & (rgb[:, :, 0] > 200) & (rgb[:, :, 1] > 200) & (rgb[:, :, 2] > 200)
 
     walk = split_band(mask, 1, 31)
-    atk = split_band(mask, 400, 432, min_w=10, min_h=14, min_col=4)
+    atk = split_band(mask, 401, 457, min_w=10, min_h=14, min_col=4)
     death_band = split_band(mask, 56, 84)
     hurt_band = split_band(mask, 100, 126, min_w=8, min_h=10, min_col=3)
     assert len(walk) >= 25, len(walk)
-    assert len(atk) >= 16, len(atk)
+    assert len(atk) >= 19, len(atk)
     assert len(death_band) >= 5, len(death_band)
     assert len(hurt_band) >= 9, len(hurt_band)
 
@@ -109,12 +112,21 @@ def main():
             name = f"{prefix}_{i}"
             entries.append((name, chroma(arr, walk[idx])))
             boxes[name] = walk[idx]
+    left_imgs = []
     for prefix, idxs in ATK_MAP.items():
         for i, idx in enumerate(idxs):
             name = f"{prefix}_{i}"
             box = expand_with_swoosh(mask, swoosh, atk[idx], W, H, neighbors=atk)
-            entries.append((name, scrub_ghost_fragments(chroma(arr, box))))
+            img = scrub_ghost_fragments(chroma(arr, box))
+            entries.append((name, img))
             boxes[name] = box
+            if prefix == "attack_left":
+                left_imgs.append(img)
+    for i in ATK_RIGHT_FROM_LEFT:
+        name = f"attack_right_{i}"
+        flipped = left_imgs[i].transpose(Image.FLIP_LEFT_RIGHT)
+        entries.append((name, flipped))
+        boxes[name] = boxes[f"attack_left_{i}"]  # source box (pre-flip)
     for name, idx in HURT_MAP.items():
         frame_name = f"{name}_0"
         entries.append((frame_name, chroma(arr, hurt_band[idx])))
@@ -179,11 +191,12 @@ def main():
                 "source": "prim-priestess.png (Claire Starsword / The Spriters Resource)",
                 "chroma": "RGB(151,167,151) tol=45",
                 "walk_band": "y=1..31",
-                "attack_band": "y=400..432 (main pose row; avoids stacked clone bodies)",
+                "attack_band": "y=401..457 (pose row + lower left-contact; skip tear cells 14/17)",
                 "death_band": "y=56..84",
                 "hurt_band": "y=100..126",
                 "walk_map": WALK_MAP,
-                "attack_map": ATK_MAP,
+                "attack_map": {**ATK_MAP, "attack_right": "flip(attack_left)"},
+                "attack_right_from_left": ATK_RIGHT_FROM_LEFT,
                 "hurt_map": HURT_MAP,
                 "death_idx": DEATH_IDX,
             },
