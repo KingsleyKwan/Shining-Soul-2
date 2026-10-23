@@ -75,6 +75,13 @@ export class Boss extends EnemyBase {
     this.onDefeated = cb;
   }
 
+  override setRoomPresent(present: boolean): void {
+    super.setRoomPresent(present);
+    if (!this.label?.scene) return;
+    if ((this.dying || this.dead) && present) return;
+    this.label.setVisible(present);
+  }
+
   protected override getIframeMs(): number {
     return IFRAME_MS;
   }

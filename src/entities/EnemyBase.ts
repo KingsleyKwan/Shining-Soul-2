@@ -15,6 +15,9 @@ export abstract class EnemyBase extends CharacterBase {
   protected hurtUntil = 0;
   private onLootDrop?: (x: number, y: number) => void;
 
+  /** Tiled room this hostile belongs to. Shown only while that room is current. */
+  spawnRoom = '';
+
   protected hpText?: Phaser.GameObjects.Text;
   protected hpBarBg?: Phaser.GameObjects.Rectangle;
   protected hpBarFg?: Phaser.GameObjects.Rectangle;
@@ -44,6 +47,28 @@ export abstract class EnemyBase extends CharacterBase {
 
   setOnLootDrop(cb: (x: number, y: number) => void): void {
     this.onLootDrop = cb;
+  }
+
+  /**
+   * Show or park this hostile for the current camera room.
+   * Hidden hostiles do not simulate, collide, or draw their HP UI.
+   */
+  setRoomPresent(present: boolean): void {
+    if (!this.scene) return;
+    // A death fade must not be revived by walking back into the room.
+    if ((this.dying || this.dead) && present) return;
+    const body = this.body as Phaser.Physics.Arcade.Body | null;
+    if (!present) {
+      this.setVelocity(0, 0);
+      this.pather?.reset();
+      body?.setEnable(false);
+    }
+    this.setActive(present);
+    this.setVisible(present);
+    if (present) body?.setEnable(true);
+    this.hpBarBg?.setVisible(present);
+    this.hpBarFg?.setVisible(present);
+    this.hpText?.setVisible(present);
   }
 
   protected createHpUi(opts?: {

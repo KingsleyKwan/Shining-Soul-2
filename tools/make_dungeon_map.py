@@ -265,7 +265,8 @@ def main():
     objects = [
         # --- A entry / camp ---
         obj("player", "spawn", 10, 16, props={"room": "a"}),
-        obj("enemy_a1", "enemy", 30, 24, props={"room": "a", "hp": 2}),
+        # SW of the east door so Paste aggro (150px) does not cover the doorway.
+        obj("enemy_a1", "enemy", 18, 26, props={"room": "a", "hp": 2}),
         obj("door_a_to_c", "door", 45, 14, 3, 3, {"target": "spawn_c_west", "room": "c"}),
         obj("spawn_a", "spawn", 40, 15, props={"room": "a"}),
         # --- C corridor ---
@@ -406,6 +407,19 @@ def validate(walls, objects):
             d = dist(e, s)
             if d < PASTE_AGGRO + 8:
                 raise SystemExit(f"{e['name']} aggro-overlaps {s['name']} ({d:.0f}px)")
+
+    # Entry Paste must stay on room A floor and clear of the east door funnel.
+    paste_a = by_name["enemy_a1"]
+    east_door = by_name["door_a_to_c"]
+    ax, ay = tile_of(paste_a)
+    a0, ay0, a1, ay1 = ROOMS["a"]
+    if not (a0 < ax < a1 and ay0 < ay < ay1):
+        raise SystemExit(f"enemy_a1 tile {ax},{ay} is outside room A")
+    if blocked(ax, ay):
+        raise SystemExit(f"enemy_a1 is inside a wall at {ax},{ay}")
+    door_gap = dist(paste_a, east_door)
+    if door_gap < 160:
+        raise SystemExit(f"enemy_a1 is {door_gap:.0f}px from the east door (need >= 160)")
 
     for s in spawns:
         if room_of.get(s["name"]) != "boss":

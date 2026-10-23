@@ -35,6 +35,11 @@ const PASTE_HP: Record<RoomId, number> = {
   boss: 3,
 };
 
+/** Added to each door trigger width and height, split evenly around the opening. */
+const DOOR_TRIGGER_GROW = 24;
+/** Soft room clamp, in pixels. Exit-door overlaps skip this so the trigger can fire. */
+const ROOM_CLAMP_INSET = 4;
+
 type Rect = { x: number; y: number; w: number; h: number };
 type SpawnPoint = { x: number; y: number };
 type EnemySpawn = SpawnPoint & { room: RoomId; hp: number };
@@ -54,7 +59,9 @@ function isRoomId(value: string | undefined): value is RoomId {
 /**
  * One-stage dungeon (one Tiled map, camera clamps per room).
  * Entry → combat corridor → chest room, and corridor → boss arena.
- * Door objects teleport with a short fade. After Captain Gully falls,
+ * Door objects teleport with a short fade. The player is soft-clamped to the
+ * current room so a doorway cannot be walked through without that teleport.
+ * Pastes and the boss simulate only in their own room. After Captain Gully falls,
  * an exit portal in the arena opens the stage-clear overlay.
  */
 export class GameScene extends Phaser.Scene {
@@ -167,15 +174,18 @@ export class GameScene extends Phaser.Scene {
     this.hostiles = this.add.group();
 
     for (const p of this.spawns.enemies) {
-      this.spawnPaste(p.x, p.y, p.hp, walls);
+      this.spawnPaste(p.x, p.y, p.hp, p.room, walls);
     }
 
     if (this.spawns.boss) {
       this.boss = new Boss(this, this.spawns.boss.x, this.spawns.boss.y, 14);
+      this.boss.spawnRoom = 'boss';
       this.boss.setTarget(this.player);
       this.boss.setPathfinder(this.pathfinder);
       this.boss.setOnDefeated(() => this.showBossVictory());
       this.boss.setOnLootDrop((dx, dy) => this.tryEnemyDrop(dx, dy, 0.55));
+      // Hidden until applyRoomCamera — create always starts in Entry.
+      this.boss.setRoomPresent(false);
       this.hostiles.add(this.boss);
       this.physics.add.collider(this.boss, walls);
     }
@@ -348,6 +358,7 @@ export class GameScene extends Phaser.Scene {
       if (!this.gameOver && !this.transitioning && !this.stageClearVisible) {
         this.updateChestInteract();
         this.player.handleInput(this.inputState, delta);
+        if (!this.player.isDead()) this.maintainRoomConstraint();
       }
     } catch (err) {
       console.error('[SS2] GameScene.update error', err);
@@ -445,12 +456,15 @@ export class GameScene extends Phaser.Scene {
     x: number,
     y: number,
     hp: number,
+    room: RoomId,
     walls: Phaser.Tilemaps.TilemapLayer,
   ): void {
     const enemy = new Enemy(this, x, y, hp);
+    enemy.spawnRoom = room;
     enemy.setTarget(this.player);
     enemy.setPathfinder(this.pathfinder);
     enemy.setOnLootDrop((dx, dy) => this.tryEnemyDrop(dx, dy, 0.28));
+    enemy.setRoomPresent(room === this.currentRoom);
     this.enemies.add(enemy);
     this.hostiles.add(enemy);
     this.physics.add.collider(enemy, walls);
@@ -634,9 +648,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupDoors(): void {
+    const pad = DOOR_TRIGGER_GROW / 2;
     for (const d of this.spawns.doors) {
+      d.x -= pad;
+      d.y -= pad;
+      d.w += DOOR_TRIGGER_GROW;
+      d.h += DOOR_TRIGGER_GROW;
+
       const zone = this.add.zone(d.x + d.w / 2, d.y + d.h / 2, d.w, d.h);
       this.physics.add.existing(zone, true);
+      const body = zone.body as Phaser.Physics.Arcade.StaticBody;
+      // Zone static bodies stay at a default size unless sized and refreshed.
+      body.setSize(d.w, d.h);
+      body.updateFromGameObject();
       this.physics.add.overlap(this.player, zone, () => {
         this.tryUseDoor(d.target, d.room);
       });
@@ -671,6 +695,98 @@ export class GameScene extends Phaser.Scene {
     this.currentRoom = room;
     const r = this.rooms[room];
     this.cameras.main.setBounds(r.x, r.y, r.w, r.h);
+    this.syncHostileRooms();
+  }
+
+  /** Park Pastes and the boss unless their spawn room is on screen. */
+  private syncHostileRooms(): void {
+    if (!this.hostiles) return;
+    const room = this.currentRoom;
+    for (const child of this.hostiles.getChildren()) {
+      const hostile = child as Enemy | Boss;
+      if (!hostile.scene) continue;
+      hostile.setRoomPresent(hostile.spawnRoom === room);
+    }
+  }
+
+  /**
+   * Backup door test plus a soft clamp so the full-map physics world cannot
+   * carry the player into the next room without a teleport.
+   */
+  private maintainRoomConstraint(): void {
+    if (this.transitioning || this.gameOver || this.stageClearVisible || this.player.isDead()) return;
+    if (this.tryDoorsByPosition()) return;
+    this.clampPlayerToRoom();
+    if (!this.transitioning) this.tryDoorsByPosition();
+  }
+
+  /** Sprite position after this frame's physics step (postUpdate has not run yet). */
+  private resolvedPlayerPoint(): { x: number; y: number } {
+    const body = this.player.body as Phaser.Physics.Arcade.Body | null;
+    if (!body) return { x: this.player.x, y: this.player.y };
+    return {
+      x: this.player.x + (body.position.x - body.prevFrame.x),
+      y: this.player.y + (body.position.y - body.prevFrame.y),
+    };
+  }
+
+  private playerInDoor(d: DoorSpawn): boolean {
+    const p = this.resolvedPlayerPoint();
+    if (p.x >= d.x && p.x <= d.x + d.w && p.y >= d.y && p.y <= d.y + d.h) return true;
+    const body = this.player.body as Phaser.Physics.Arcade.Body | null;
+    if (!body) return false;
+    return (
+      body.right >= d.x &&
+      body.left <= d.x + d.w &&
+      body.bottom >= d.y &&
+      body.top <= d.y + d.h
+    );
+  }
+
+  private playerOverlapsExitDoor(): boolean {
+    for (const d of this.spawns.doors) {
+      if (d.room === this.currentRoom) continue;
+      if (this.playerInDoor(d)) return true;
+    }
+    return false;
+  }
+
+  /** Point-in-door backup for the physics overlap, which misses some zone bodies. */
+  private tryDoorsByPosition(): boolean {
+    if (this.transitioning || this.gameOver || this.stageClearVisible || this.player.isDead()) return false;
+    for (const d of this.spawns.doors) {
+      if (this.currentRoom === d.room) continue;
+      if (!this.playerInDoor(d)) continue;
+      this.tryUseDoor(d.target, d.room);
+      if (this.transitioning) return true;
+    }
+    return false;
+  }
+
+  private clampPlayerToRoom(): void {
+    if (this.transitioning || this.playerOverlapsExitDoor()) return;
+    const r = this.rooms[this.currentRoom];
+    if (!r) return;
+
+    const minX = r.x + ROOM_CLAMP_INSET;
+    const maxX = r.x + r.w - ROOM_CLAMP_INSET;
+    const minY = r.y + ROOM_CLAMP_INSET;
+    const maxY = r.y + r.h - ROOM_CLAMP_INSET;
+    const p = this.resolvedPlayerPoint();
+    const x = Phaser.Math.Clamp(p.x, minX, maxX);
+    const y = Phaser.Math.Clamp(p.y, minY, maxY);
+    if (x === p.x && y === p.y) return;
+
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    if (p.x < minX && body.velocity.x < 0) body.velocity.x = 0;
+    else if (p.x > maxX && body.velocity.x > 0) body.velocity.x = 0;
+    if (p.y < minY && body.velocity.y < 0) body.velocity.y = 0;
+    else if (p.y > maxY && body.velocity.y > 0) body.velocity.y = 0;
+    this.player.setPosition(x, y);
+    body.updateFromGameObject();
+    // postUpdate adds (position - prevFrame) back onto the sprite.
+    body.prevFrame.set(body.position.x, body.position.y);
+    body.prev.set(body.position.x, body.position.y);
   }
 
   private refreshSkillHud(): void {
@@ -785,6 +901,8 @@ export class GameScene extends Phaser.Scene {
     if (this.gameOver) return;
     this.gameOver = true;
     this.leaving = false;
+    // Death in Entry must not leave Captain Gully's sprite or HP plate on screen.
+    this.syncHostileRooms();
     this.stageClearVisible = false;
     hideStageClearDom();
 
@@ -924,7 +1042,7 @@ export class GameScene extends Phaser.Scene {
         spawn_boss: tile(105, 15),
       },
       enemies: [
-        { ...tile(30, 24), room: 'a', hp: 2 },
+        { ...tile(18, 26), room: 'a', hp: 2 },
         { ...tile(62, 7), room: 'c', hp: 3 },
         { ...tile(78, 8), room: 'c', hp: 3 },
         { ...tile(60, 26), room: 'c', hp: 3 },
