@@ -63,11 +63,12 @@ Desktop adds **Q** for the active skill. Touch controls appear only on touch-cap
 | **Q** | Active skill / 主動技能（冷卻） |
 | **E**（near chest） | Open the chest room chest / 開寶箱房寶箱 |
 | **Space**（when chest prompt shows） | Same as **E** / 有提示時等同開箱（不揮刀） |
+| **I** / **Tab** | Toggle inventory / equipment panel / 開關背包／裝備面板 |
 | Walk into **door** | Fade + teleport to the linked room / 淡入淡出傳送到相連房間 |
 | Walk into **出口**（after boss） | Stage Clear overlay / Boss 擊破後走進出口，顯示關卡清除 |
 | **M** | Mute / unmute SFX + BGM / 靜音開關（鍵盤） |
 | **R** | Restart dungeon（same class）/ 重開地牢（保留職業） |
-| **Esc** | Back to character select / 返回選角 |
+| **Esc** | Close inventory if open; else back to select / 先關背包，否則返回選角 |
 | Click / tap（on GAME OVER） | Restart / 遊戲結束後點擊或點按重開 |
 | **關卡清除** buttons | **重新開始** / **選角** / **繼續**（繼續只關掉面板） |
 
@@ -82,6 +83,7 @@ Shown when the device reports touch (`maxTouchPoints`, a coarse pointer, or Phas
 | **ATK**（bottom-right / 右下） | Tap or **hold** to charge / 輕點或**長按**蓄力（同 Space / Z） |
 | **技**（above **E** / E 上方） | Active skill / 主動技能（同 **Q**，有冷卻） |
 | **E**（beside ATK / 攻擊鍵旁） | Open chest / 開箱（同鍵盤 E） |
+| **包**（top-right / 右上） | Inventory / equipment / 背包／裝備（同 **I**／**Tab**） |
 | **R**（top-right / 右上） | Restart / 重開 |
 | **☰** | Back to select / 返回選角（同 Esc） |
 
@@ -200,8 +202,8 @@ Mechanics are decoupled from character data so a future hero is mostly **new dat
 - Diablo-like **prefix + suffix** data in `src/data/loot/` (JSON-friendly TS).
 - Chest always rolls 1 item (prefers hero weapon type) + HP/gold; Paste ~28% / Boss ~55% drop.
 - Names: EN + 香港繁體（例：「鋒利鐵劍之力量」）.
-- `Inventory` stub auto-equips best weapon; mods apply to damage/speed/str; HUD shows bag + equipped.
-- 寶箱必出一件；敵人有機率掉落。背包自動裝備最高傷害武器。
+- `Inventory`: bag + one slot each for weapon / armor / accessory. Empty slot auto-equips on pickup; **I** / **Tab** / **包** opens the panel to equip, unequip, or swap. Mods (damage/speed/str/maxHp heal) apply from equipped gear only; HUD shows bag + slots + mod summary. Combat soft-pauses while the panel is open.
+- 寶箱必出一件；敵人有機率掉落。空欄自動裝備；可開面板手動裝備／卸下／替換。
 
 ## Project structure / 目錄結構
 
@@ -232,13 +234,14 @@ shining-soul-2-web/
     │   ├── players/          # eric.ts / prim.ts / raizen.ts + index
     │   └── loot/             # bases, affixes, rollItem (Phase 2)
     ├── systems/
-    │   └── Inventory.ts      # bag + auto-equip weapon
+    │   └── Inventory.ts      # bag + equip slots (weapon/armor/accessory)
     ├── anim/
     │   └── FourDirAnimController.ts
     ├── audio/GameAudio.ts
     ├── ai/TilePathfinder.ts  # grid A* + PathFollower
     ├── input/InputState.ts   # keyboard + touch → one frame (incl. Q / 技)
-    ├── ui/TouchControls.ts   # on-screen stick + ATK / 技 / E / R / ☰
+    ├── ui/TouchControls.ts   # on-screen stick + ATK / 技 / E / 包 / R / ☰
+    ├── ui/InventoryPanel.ts  # bag / equipment panel (HK 繁中)
     ├── ui/GameOverDom.ts     # DOM game-over overlay
     ├── ui/StageClearDom.ts   # DOM 關卡清除 overlay
     ├── scenes/
@@ -265,8 +268,8 @@ Ideas only — not implemented yet.
 僅為想法，下列尚未實現：
 
 ### Done in Phase 2 / 第二階段已完成
-Charge stages + STR damage; affix loot + inventory stub.  
-蓄力段數＋力量傷害；詞綴掉落＋背包 stub。
+Charge stages + STR damage; affix loot + inventory equip UI.  
+蓄力段數＋力量傷害；詞綴掉落＋背包／裝備介面。
 
 ### Done — active skill stub / 主動技能 stub 已完成
 One active skill per hero + cooldown HUD（**Q** / **技**）. Not a skill tree.  
@@ -277,8 +280,12 @@ One active skill per hero + cooldown HUD（**Q** / **技**）. Not a skill tree.
 Entry, combat corridor, chest room, boss arena, and an exit portal that opens **關卡清除**.  
 入口、戰鬥迴廊、寶箱房、Boss 競技場，以及通往關卡清除的出口。
 
+### Done — inventory equip UI / 背包裝備介面已完成
+Panel to equip / unequip / swap gear; soft-pause while open; keyboard + touch.  
+可裝備／卸下／替換；開面板時軟暫停；鍵盤＋觸屏。
+
 ### Next ideas / 下一步想法
-1. Full inventory UI (equip/compare) · 完整背包介面  
+1. Compare tooltips / drag-drop polish · 對比提示／拖放  
 2. Stairs / a second stage · 樓梯／第二關  
 3. Distinct Prim / Raizen charge VFX · 職業蓄力特效  
 4. Persist gold / bag across **R** · 跨重開保留金幣／背包  

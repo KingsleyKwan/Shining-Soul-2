@@ -15,9 +15,11 @@ export type TouchFrame = {
   interact: boolean;
   restart: boolean;
   menu: boolean;
+  /** 包 just pressed (edge) — inventory / equipment panel. */
+  inventory: boolean;
 };
 
-type EdgeName = 'attack' | 'skill' | 'interact' | 'restart' | 'menu';
+type EdgeName = 'attack' | 'skill' | 'interact' | 'restart' | 'menu' | 'inventory';
 
 type HeldButton = {
   circle: Phaser.GameObjects.Arc;
@@ -47,6 +49,7 @@ export class TouchControls {
     interact: false,
     restart: false,
     menu: false,
+    inventory: false,
   };
   private attackHeld = false;
   private attackReleased = false;
@@ -97,6 +100,8 @@ export class TouchControls {
     this.makeButton(w - 112, h - 90, 22, '技', 14, 0x4a3aa8, 'skill', 30);
     this.makeButton(w - 68, 22, 18, 'R', 12, 0x163044, 'restart', 28);
     this.makeButton(w - 24, 22, 18, '☰', 14, 0x163044, 'menu', 28);
+    // Inventory / equipment (left of R so it stays clear of ATK / E / 技).
+    this.makeButton(w - 112, 22, 18, '包', 11, 0x2a4a3a, 'inventory', 28);
   }
 
   /** Move vector in [-1, 1] plus one-frame edges for ATK / 技 / E / R / menu. */
@@ -113,12 +118,14 @@ export class TouchControls {
       interact: this.edges.interact,
       restart: this.edges.restart,
       menu: this.edges.menu,
+      inventory: this.edges.inventory,
     };
     this.edges.attack = false;
     this.edges.skill = false;
     this.edges.interact = false;
     this.edges.restart = false;
     this.edges.menu = false;
+    this.edges.inventory = false;
     this.attackReleased = false;
     return frame;
   }

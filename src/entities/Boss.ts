@@ -44,9 +44,9 @@ export class Boss extends EnemyBase {
     body.setMaxVelocity(CHASE_SPEED, CHASE_SPEED);
 
     this.label = scene.add
-      .text(x, y - 36, 'BOSS', {
+      .text(x, y - 36, '蓋利隊長', {
         fontFamily: 'monospace',
-        fontSize: '8px',
+        fontSize: '9px',
         color: '#ffcc66',
         stroke: '#000000',
         strokeThickness: 2,
