@@ -241,7 +241,7 @@ shining-soul-2-web/
     ├── ai/TilePathfinder.ts  # grid A* + PathFollower
     ├── input/InputState.ts   # keyboard + touch → one frame (incl. Q / 技)
     ├── ui/TouchControls.ts   # on-screen stick + ATK / 技 / E / 包 / R / ☰
-    ├── ui/InventoryPanel.ts  # bag / equipment panel (HK 繁中)
+    ├── ui/InventoryPanel.ts  # DOM bag / equipment panel (HK 繁中)
     ├── ui/GameOverDom.ts     # DOM game-over overlay
     ├── ui/StageClearDom.ts   # DOM 關卡清除 overlay
     ├── scenes/

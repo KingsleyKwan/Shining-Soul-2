@@ -7,7 +7,7 @@ import type { Facing } from '../data/types';
  */
 export abstract class CharacterBase extends Phaser.Physics.Arcade.Sprite {
   facing: Facing = 'down';
-  readonly maxHp: number;
+  maxHp: number;
   hp: number;
 
   protected moveSpeed: number;

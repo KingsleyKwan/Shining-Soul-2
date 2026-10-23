@@ -112,13 +112,19 @@ export class PlayerBase extends CharacterBase {
     this.onHpChange?.(this.hp, this.maxHp);
   }
 
-  /** Apply aggregated Inventory mods (damage/speed/str/maxHp heal bump). */
+  /** Apply aggregated Inventory mods (damage/speed/str/maxHp). Raises/lowers maxHp with gear. */
   applyGearMods(mods: ItemMods): void {
-    const prevMaxBonus = this.gearMods.maxHp;
+    const prevMax = this.maxHp;
     this.gearMods = { ...mods };
     this.moveSpeed = this.baseMoveSpeed + mods.speed;
-    const maxBonusDelta = mods.maxHp - prevMaxBonus;
-    if (maxBonusDelta > 0) this.heal(maxBonusDelta);
+    this.maxHp = this.playerData.stats.maxHp + mods.maxHp;
+    const delta = this.maxHp - prevMax;
+    if (delta > 0) {
+      this.heal(delta);
+    } else if (delta < 0) {
+      if (this.hp > this.maxHp) this.hp = this.maxHp;
+      this.onHpChanged(this.hp, this.maxHp);
+    }
   }
 
   getGearMods(): ItemMods {
