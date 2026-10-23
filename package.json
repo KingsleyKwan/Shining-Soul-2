@@ -2,12 +2,14 @@
   "name": "shining-soul-2-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Personal learning remake prototype of GBA Shining Soul II (光明之魂2) — Phaser 3 + Vite + TypeScript",
+  "description": "Personal learning remake prototype of GBA Shining Soul II (\u5149\u660e\u4e4b\u9b422) \u2014 Phaser 3 + Vite + TypeScript",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prebuild": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py",
+    "atlas": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py"
   },
   "dependencies": {
     "phaser": "3.90.0"
