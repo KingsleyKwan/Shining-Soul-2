@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from atlas_attack_util import expand_with_swoosh, scrub_ghost_fragments
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -23,11 +27,12 @@ WALK_MAP = {
     "walk_up": [4, 21, 22, 23, 24],
     "walk_left": [2, 9, 10, 12],
 }
+# Top pose row only (y=384..429). Full band stacks a second row →「四分五裂」clones.
 ATK_MAP = {
-    "attack_down": [0, 1, 3, 4],
-    "attack_right": [6, 7, 8, 9],
-    "attack_up": [10, 12, 14, 17],
-    "attack_left": [18, 17, 20, 14],
+    "attack_down": [0, 1, 2, 3],
+    "attack_right": [5, 6, 7, 8],
+    "attack_up": [11, 12, 14, 15],
+    "attack_left": [16, 19, 20, 4],
 }
 HURT_MAP = {
     "hurt_down": 0,
@@ -63,34 +68,6 @@ def split_band(mask: np.ndarray, y0: int, y1: int, min_w=8, min_h=12, min_col=4)
     return frames
 
 
-def expand_with_swoosh(mask, swoosh, box, W, H, margin=18, max_w=56, max_h=52):
-    x0, y0, x1, y1 = box
-    sx0, sx1 = max(0, x0 - margin), min(W - 1, x1 + margin)
-    sy0, sy1 = max(0, y0 - margin), min(H - 1, y1 + margin)
-    region = mask[sy0 : sy1 + 1, sx0 : sx1 + 1] | swoosh[sy0 : sy1 + 1, sx0 : sx1 + 1]
-    if not region.any():
-        return box
-    rows = np.where(region.any(axis=1))[0]
-    cols = np.where(region.any(axis=0))[0]
-    nx0, nx1 = sx0 + int(cols[0]), sx0 + int(cols[-1])
-    ny0, ny1 = sy0 + int(rows[0]), sy0 + int(rows[-1])
-    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    if nx1 - nx0 + 1 > max_w:
-        nx0 = int(cx - max_w / 2)
-        nx1 = nx0 + max_w - 1
-    if ny1 - ny0 + 1 > max_h:
-        ny0 = int(cy - max_h / 2)
-        ny1 = ny0 + max_h - 1
-    nx0, ny0 = max(0, nx0), max(0, ny0)
-    nx1, ny1 = min(W - 1, nx1), min(H - 1, ny1)
-    cell = mask[ny0 : ny1 + 1, nx0 : nx1 + 1] | swoosh[ny0 : ny1 + 1, nx0 : nx1 + 1]
-    if cell.any():
-        rows = np.where(cell.any(axis=1))[0]
-        cols = np.where(cell.any(axis=0))[0]
-        return (nx0 + int(cols[0]), ny0 + int(rows[0]), nx0 + int(cols[-1]), ny0 + int(rows[-1]))
-    return (nx0, ny0, nx1, ny1)
-
-
 def chroma(arr, box, pad=1):
     H, W = arr.shape[:2]
     x0, y0, x1, y1 = box
@@ -116,11 +93,11 @@ def main():
     swoosh = mask & (rgb[:, :, 0] > 200) & (rgb[:, :, 1] > 200) & (rgb[:, :, 2] > 200)
 
     walk = split_band(mask, 17, 46)
-    atk = split_band(mask, 384, 477, min_w=12, min_h=16, min_col=5)
+    atk = split_band(mask, 384, 429, min_w=10, min_h=14, min_col=4)
     death_band = split_band(mask, 57, 84)
     hurt_band = split_band(mask, 115, 141, min_w=8, min_h=10, min_col=3)
     assert len(walk) >= 25, len(walk)
-    assert len(atk) >= 21, len(atk)
+    assert len(atk) >= 16, len(atk)
     assert len(death_band) >= 5, len(death_band)
     assert len(hurt_band) >= 9, len(hurt_band)
 
@@ -134,8 +111,8 @@ def main():
     for prefix, idxs in ATK_MAP.items():
         for i, idx in enumerate(idxs):
             name = f"{prefix}_{i}"
-            box = expand_with_swoosh(mask, swoosh, atk[idx], W, H)
-            entries.append((name, chroma(arr, box)))
+            box = expand_with_swoosh(mask, swoosh, atk[idx], W, H, neighbors=atk)
+            entries.append((name, scrub_ghost_fragments(chroma(arr, box))))
             boxes[name] = box
     for name, idx in HURT_MAP.items():
         frame_name = f"{name}_0"
@@ -201,7 +178,7 @@ def main():
                 "source": "raizen-ninja.png (Claire Starsword / The Spriters Resource)",
                 "chroma": "RGB(199,199,199) tol=35",
                 "walk_band": "y=17..46",
-                "attack_band": "y=384..477",
+                "attack_band": "y=384..429 (top pose row; avoids stacked clone bodies)",
                 "death_band": "y=57..84",
                 "hurt_band": "y=115..141",
                 "walk_map": WALK_MAP,

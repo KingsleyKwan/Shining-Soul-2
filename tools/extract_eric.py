@@ -23,6 +23,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from atlas_attack_util import expand_with_swoosh, scrub_ghost_fragments
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -80,34 +84,6 @@ def split_band(mask: np.ndarray, y0: int, y1: int, min_w=8, min_h=12, min_col=4)
     return frames
 
 
-def expand_with_swoosh(mask, swoosh, box, W, H, margin=18, max_w=56, max_h=48):
-    x0, y0, x1, y1 = box
-    sx0, sx1 = max(0, x0 - margin), min(W - 1, x1 + margin)
-    sy0, sy1 = max(0, y0 - margin), min(H - 1, y1 + margin)
-    region = mask[sy0 : sy1 + 1, sx0 : sx1 + 1] | swoosh[sy0 : sy1 + 1, sx0 : sx1 + 1]
-    if not region.any():
-        return box
-    rows = np.where(region.any(axis=1))[0]
-    cols = np.where(region.any(axis=0))[0]
-    nx0, nx1 = sx0 + int(cols[0]), sx0 + int(cols[-1])
-    ny0, ny1 = sy0 + int(rows[0]), sy0 + int(rows[-1])
-    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    if nx1 - nx0 + 1 > max_w:
-        nx0 = int(cx - max_w / 2)
-        nx1 = nx0 + max_w - 1
-    if ny1 - ny0 + 1 > max_h:
-        ny0 = int(cy - max_h / 2)
-        ny1 = ny0 + max_h - 1
-    nx0, ny0 = max(0, nx0), max(0, ny0)
-    nx1, ny1 = min(W - 1, nx1), min(H - 1, ny1)
-    cell = mask[ny0 : ny1 + 1, nx0 : nx1 + 1] | swoosh[ny0 : ny1 + 1, nx0 : nx1 + 1]
-    if cell.any():
-        rows = np.where(cell.any(axis=1))[0]
-        cols = np.where(cell.any(axis=0))[0]
-        return (nx0 + int(cols[0]), ny0 + int(rows[0]), nx0 + int(cols[-1]), ny0 + int(rows[-1]))
-    return (nx0, ny0, nx1, ny1)
-
-
 def chroma(arr, box, pad=1):
     H, W = arr.shape[:2]
     x0, y0, x1, y1 = box
@@ -147,8 +123,8 @@ def main():
     for prefix, idxs in ATK_MAP.items():
         for i, idx in enumerate(idxs):
             name = f"{prefix}_{i}"
-            box = expand_with_swoosh(mask, swoosh, atk[idx], W, H)
-            entries.append((name, chroma(arr, box)))
+            box = expand_with_swoosh(mask, swoosh, atk[idx], W, H, neighbors=atk)
+            entries.append((name, scrub_ghost_fragments(chroma(arr, box))))
             boxes[name] = box
 
     for name, idx in HURT_MAP.items():
@@ -236,7 +212,7 @@ def main():
                 "notes": [
                     "4-dir walk; Phaser flipX left→right for walk",
                     "hurt has native 4-dir frames; death is shared knockdown then lie",
-                    "attack boxes expanded to capture white swoosh when nearby",
+                    "attack boxes expand via swoosh only, clamped to neighbor midpoints (no clone bodies)",
                 ],
             },
             f,
