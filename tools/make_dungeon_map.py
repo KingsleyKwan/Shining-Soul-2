@@ -9,7 +9,7 @@ Map: 144×64 @ 16px (2304×1024). Four rooms, camera clamps per room:
     [ A entry 48×32 ][ C corridor 48×32 ][ Boss arena 48×32 ]
                      [ B chest   48×32 ]
 
-Doors (2-tile openings) teleport via Tiled objects (target + room).
+Door gaps (east-west rows 14–17, south columns 70–71) teleport via Tiled objects (target + room).
 Pastes sit off the door lanes. Captain Gully is alone in the boss arena.
 An exit marker (inactive until the boss dies) sits on the arena's north side.
 
@@ -45,6 +45,8 @@ H = ROOM_H * 2  # 64
 # Paste aggro is 150px; boss aggro is 200px. Keep spawns outside that.
 PASTE_AGGRO = 150
 BOSS_AGGRO = 200
+# GameScene DOOR_TRIGGER_GROW is 24px total (12px each side) on the door rect.
+DOOR_TRIGGER_PAD = 12
 
 
 def px(img, x, y, c):
@@ -184,7 +186,7 @@ def main():
     fill_room_shell(setg, bx0, bx1, by0, by1)
     fill_room_shell(setg, gx0, gx1, gy0, gy1, floor="boss")
 
-    # --- Décor. Keep the east-west lane (y=15..16) and the chest lane (x=70..71) open. ---
+    # --- Décor. Keep the east-west lane (y=14..17) and the chest lane (x=70..71) open. ---
     # Entry camp: north/south stubs and pillars, away from the east door.
     hwall(6, 12, 6)
     hwall(6, 12, 26)
@@ -227,8 +229,8 @@ def main():
                 setg("walls", x, y, 0)
                 setg("ground", x, y, DOOR)
 
-    link_h(47, 48, (15, 16))  # A east ↔ C west
-    link_h(95, 96, (15, 16))  # C east ↔ Boss west
+    link_h(47, 48, (14, 15, 16, 17))  # A east ↔ C west
+    link_h(95, 96, (14, 15, 16, 17))  # C east ↔ Boss west
     link_v((70, 71), (31, 32, 33))  # C south ↔ B north (incl. inner top wall)
 
     def prop(name, value):
@@ -267,15 +269,16 @@ def main():
         obj("player", "spawn", 10, 16, props={"room": "a"}),
         # SW of the east door so Paste aggro (150px) does not cover the doorway.
         obj("enemy_a1", "enemy", 18, 26, props={"room": "a", "hp": 2}),
-        obj("door_a_to_c", "door", 45, 14, 3, 3, {"target": "spawn_c_west", "room": "c"}),
+        obj("door_a_to_c", "door", 45, 14, 3, 4, {"target": "spawn_c_west", "room": "c"}),
         obj("spawn_a", "spawn", 40, 15, props={"room": "a"}),
         # --- C corridor ---
-        obj("door_c_to_a", "door", 48, 14, 3, 3, {"target": "spawn_a", "room": "a"}),
+        obj("door_c_to_a", "door", 48, 14, 3, 4, {"target": "spawn_a", "room": "a"}),
         obj("spawn_c_west", "spawn", 56, 15, props={"room": "c"}),
         obj("enemy_c1", "enemy", 62, 7, props={"room": "c", "hp": 3}),
         obj("enemy_c2", "enemy", 78, 8, props={"room": "c", "hp": 3}),
-        obj("enemy_c3", "enemy", 60, 26, props={"room": "c", "hp": 3}),
-        obj("door_c_to_boss", "door", 92, 14, 3, 3, {"target": "spawn_boss", "room": "boss"}),
+        # Southwest, clear of the chest-lane door (aggro 150px must not cover door_c_to_b or arrivals).
+        obj("enemy_c3", "enemy", 56, 28, props={"room": "c", "hp": 3}),
+        obj("door_c_to_boss", "door", 92, 14, 3, 4, {"target": "spawn_boss", "room": "boss"}),
         obj("spawn_c_east", "spawn", 86, 15, props={"room": "c"}),
         obj("door_c_to_b", "door", 69, 28, 3, 4, {"target": "spawn_b", "room": "b"}),
         obj("spawn_c_south", "spawn", 70, 21, props={"room": "c"}),
@@ -285,7 +288,7 @@ def main():
         obj("chest", "chest", 80, 50, props={"room": "b"}),
         obj("enemy_b1", "enemy", 88, 58, props={"room": "b", "hp": 2}),
         # --- Boss arena ---
-        obj("door_boss_to_c", "door", 96, 14, 3, 3, {"target": "spawn_c_east", "room": "c"}),
+        obj("door_boss_to_c", "door", 96, 14, 3, 4, {"target": "spawn_c_east", "room": "c"}),
         obj("spawn_boss", "spawn", 105, 15, props={"room": "boss"}),
         obj("boss", "boss", 126, 18, props={"room": "boss"}),
         obj("exit", "exit", 116, 5, props={"room": "boss"}),
@@ -400,13 +403,31 @@ def validate(walls, objects):
         if "room" in props:
             room_of[o["name"]] = props["room"]
 
+    def dist_to_rect(px, py, x0, y0, x1, y1):
+        cx = min(max(px, x0), x1)
+        cy = min(max(py, y0), y1)
+        return ((px - cx) ** 2 + (py - cy) ** 2) ** 0.5
+
     for e in enemies:
+        ex, ey = center(e)
         for s in spawns:
             if room_of.get(e["name"]) != room_of.get(s["name"]):
                 continue
             d = dist(e, s)
             if d < PASTE_AGGRO + 8:
                 raise SystemExit(f"{e['name']} aggro-overlaps {s['name']} ({d:.0f}px)")
+        for door in doors:
+            if room_of.get(e["name"]) != room_of.get(door["name"]):
+                continue
+            gap = dist_to_rect(
+                ex, ey,
+                door["x"] - DOOR_TRIGGER_PAD,
+                door["y"] - DOOR_TRIGGER_PAD,
+                door["x"] + door["width"] + DOOR_TRIGGER_PAD,
+                door["y"] + door["height"] + DOOR_TRIGGER_PAD,
+            )
+            if gap < PASTE_AGGRO:
+                raise SystemExit(f"{e['name']} aggro-overlaps door {door['name']} ({gap:.0f}px)")
 
     # Entry Paste must stay on room A floor and clear of the east door funnel.
     paste_a = by_name["enemy_a1"]
