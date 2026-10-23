@@ -372,7 +372,9 @@ export class PlayerBase extends CharacterBase {
     GameAudio.get(this.scene)?.slash();
     this.attacking = true;
     this.setVelocity(0, 0);
-    // Drop any charge-ring residue and reset flip before attack sheet plays.
+    // Drop charge-ring / skill gfx residue so release cannot leave ghost clones.
+    this.destroySkillVfx();
+    this.clearTint();
     this.animCtl.setFacing(this.facing);
     this.animCtl.playIdle();
     this.animCtl.playAttack();
@@ -480,6 +482,8 @@ export class PlayerBase extends CharacterBase {
     this.skillActive = false;
     this.skillVelocityLock = false;
     this.clearSkillTimers();
+    // Drop any lingering slash arcs / rings so skills cannot leave ghost gfx.
+    this.destroySkillVfx();
     if (!this.dead && !this.dying && !this.stunned) this.setVelocity(0, 0);
     if (this.dead || this.dying || this.stunned || this.attacking) return;
     this.animCtl.setFacing(this.facing);
