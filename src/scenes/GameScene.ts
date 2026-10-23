@@ -6,9 +6,10 @@ import { TilePathfinder } from '../ai/TilePathfinder';
 import { GameAudio, AUDIO_REGISTRY_KEY } from '../audio/GameAudio';
 import { getHero, SELECTED_HERO_KEY } from '../data/players';
 import { formatItemToast, rollItem } from '../data/loot/roll';
-import { Inventory } from '../systems/Inventory';
+import { Inventory, type EquipSlot } from '../systems/Inventory';
 import { InputState } from '../input/InputState';
 import { TouchControls } from '../ui/TouchControls';
+import { InventoryPanel } from '../ui/InventoryPanel';
 import { hideGameOverDom, showGameOverDom } from '../ui/GameOverDom';
 import { hideStageClearDom, showStageClearDom } from '../ui/StageClearDom';
 
@@ -80,6 +81,8 @@ export class GameScene extends Phaser.Scene {
   private gold = 0;
   private inventory = new Inventory();
   private invHud!: Phaser.GameObjects.Text;
+  private inventoryPanel!: InventoryPanel;
+  private inventoryOpen = false;
   private chestOpened = false;
   private chestPos?: { x: number; y: number };
   private chestGfx?: Phaser.GameObjects.Graphics;
@@ -130,6 +133,7 @@ export class GameScene extends Phaser.Scene {
     this.chestOpened = false;
     this.gold = 0;
     this.inventory = new Inventory();
+    this.inventoryOpen = false;
     this.leaving = false;
 
     const map = this.make.tilemap({ key: 'dungeon-room' });
@@ -209,8 +213,8 @@ export class GameScene extends Phaser.Scene {
     this.inputState = new InputState(this);
 
     const help = this.touch.enabled
-      ? 'Stick · hold ATK charge · 技 · E · R · ☰'
-      : 'WASD · hold Space/Z charge · Q skill · E chest · M · R · Esc';
+      ? 'Stick · hold ATK · 技 · E · 包 · R · ☰'
+      : 'WASD · hold Space/Z · Q · E chest · I/Tab bag · M · R · Esc';
 
     this.add
       .text(8, 8, help, {
@@ -294,6 +298,15 @@ export class GameScene extends Phaser.Scene {
       .setDepth(100);
     this.refreshInvHud();
 
+    this.inventoryPanel = new InventoryPanel(this, {
+      onEquip: (uid) => this.equipBagItem(uid),
+      onUnequip: (slot) => this.unequipSlot(slot),
+      onClose: () => this.setInventoryOpen(false),
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.inventoryPanel?.destroy();
+    });
+
     this.chestPrompt = this.add
       .text(0, 0, 'E / Space — Open', {
         fontFamily: 'monospace',
@@ -346,8 +359,21 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (this.inputState.menuPressed) {
+        if (this.inventoryOpen) {
+          this.setInventoryOpen(false);
+          return;
+        }
         this.backToSelect();
         return;
+      }
+
+      if (
+        this.inputState.inventoryPressed &&
+        !this.gameOver &&
+        !this.stageClearVisible &&
+        !this.transitioning
+      ) {
+        this.setInventoryOpen(!this.inventoryOpen);
       }
 
       if (this.exitSuppress && this.player && this.spawns?.exit) {
@@ -360,10 +386,18 @@ export class GameScene extends Phaser.Scene {
         if (far > 48) this.exitSuppress = false;
       }
 
-      if (!this.gameOver && !this.transitioning && !this.stageClearVisible) {
+      // Soft-pause combat while the inventory panel is open (mobile-friendly).
+      if (
+        !this.gameOver &&
+        !this.transitioning &&
+        !this.stageClearVisible &&
+        !this.inventoryOpen
+      ) {
         this.updateChestInteract();
         this.player.handleInput(this.inputState, delta);
         if (!this.player.isDead()) this.maintainRoomConstraint();
+      } else if (this.inventoryOpen && this.player && !this.player.isDead()) {
+        this.player.setVelocity(0, 0);
       }
     } catch (err) {
       console.error('[SS2] GameScene.update error', err);
@@ -388,6 +422,12 @@ export class GameScene extends Phaser.Scene {
     this.leaving = true;
     this.stageClearVisible = false;
     this.exitSuppress = false;
+    this.inventoryOpen = false;
+    try {
+      this.inventoryPanel?.close();
+    } catch {
+      /* ignore */
+    }
     hideGameOverDom();
     hideStageClearDom();
     this.teardownGameOverInput();
@@ -606,10 +646,51 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshInvHud(): void {
-    const w = this.inventory.getEquippedWeapon();
     const line = this.inventory.hudLine();
-    const zh = w ? w.nameZh : '無裝備';
-    this.invHud?.setText(`${line}\n${zh}`);
+    const mods = this.inventory.modsHudLine();
+    this.invHud?.setText(`${line}\n${mods}`);
+  }
+
+  private setInventoryOpen(open: boolean): void {
+    if (open === this.inventoryOpen) {
+      if (open) this.inventoryPanel?.refresh(this.inventory);
+      return;
+    }
+    this.inventoryOpen = open;
+    if (open) {
+      this.player?.setVelocity(0, 0);
+      this.player?.suppressNextAttack();
+      try {
+        this.physics.world.pause();
+      } catch {
+        /* ignore */
+      }
+      this.inventoryPanel.open(this.inventory);
+    } else {
+      this.inventoryPanel.close();
+      // Do not resume if GAME OVER / stage clear already owns the pause.
+      if (!this.gameOver && !this.stageClearVisible) {
+        try {
+          this.physics.world.resume();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+
+  private equipBagItem(uid: string): void {
+    if (!this.inventory.equipFromBag(uid)) return;
+    this.player.applyGearMods(this.inventory.getMods());
+    this.refreshInvHud();
+    this.inventoryPanel.refresh(this.inventory);
+  }
+
+  private unequipSlot(slot: EquipSlot): void {
+    if (!this.inventory.unequip(slot)) return;
+    this.player.applyGearMods(this.inventory.getMods());
+    this.refreshInvHud();
+    this.inventoryPanel.refresh(this.inventory);
   }
 
   private refreshGoldHud(): void {
@@ -617,14 +698,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showLootToast(msg: string): void {
-    const { width } = this.scale;
+    const { width, height } = this.scale;
+    // Top-center, screen-fixed — stay clear of the player sprite mid-screen.
+    const y0 = Math.min(36, Math.max(8, height * 0.06));
     const toast = this.add
-      .text(width / 2, 72, msg, {
+      .text(width / 2, y0 + 8, msg, {
         fontFamily: 'monospace',
-        fontSize: '12px',
+        fontSize: '11px',
         color: '#ffe066',
         backgroundColor: '#000000cc',
         padding: { x: 8, y: 5 },
+        align: 'center',
+        wordWrap: { width: width - 24 },
       })
       .setOrigin(0.5, 0)
       .setScrollFactor(0)
@@ -634,7 +719,7 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: toast,
       alpha: 1,
-      y: 64,
+      y: y0,
       duration: 250,
       ease: 'Back.easeOut',
       onComplete: () => {
@@ -643,7 +728,7 @@ export class GameScene extends Phaser.Scene {
           this.tweens.add({
             targets: toast,
             alpha: 0,
-            y: 56,
+            y: y0 - 8,
             duration: 280,
             onComplete: () => toast.destroy(),
           });
@@ -875,6 +960,7 @@ export class GameScene extends Phaser.Scene {
 
   private showStageClear(): void {
     if (this.stageClearVisible || this.gameOver || this.leaving) return;
+    this.setInventoryOpen(false);
     this.stageClearVisible = true;
     this.player.setVelocity(0, 0);
     try {
@@ -906,6 +992,7 @@ export class GameScene extends Phaser.Scene {
     if (this.gameOver) return;
     this.gameOver = true;
     this.leaving = false;
+    this.setInventoryOpen(false);
     // Death in Entry must not leave Captain Gully's sprite or HP plate on screen.
     this.syncHostileRooms();
     this.stageClearVisible = false;

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { TouchFrame } from '../ui/TouchControls';
 
 /**
- * Frame of move / attack / skill / interact / restart / menu.
+ * Frame of move / attack / skill / interact / restart / menu / inventory.
  * GameScene owns one of these and refills it every update from the keyboard
  * plugin (if it exists) and from TouchControls. Neither source is required.
  */
@@ -23,6 +23,8 @@ export class InputState {
   interactPressed = false;
   restartPressed = false;
   menuPressed = false;
+  /** I / Tab / 包 — toggle inventory panel. Edge-triggered. */
+  inventoryPressed = false;
 
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd?: {
@@ -37,6 +39,8 @@ export class InputState {
   private keyE?: Phaser.Input.Keyboard.Key;
   private keyR?: Phaser.Input.Keyboard.Key;
   private keyEsc?: Phaser.Input.Keyboard.Key;
+  private keyI?: Phaser.Input.Keyboard.Key;
+  private keyTab?: Phaser.Input.Keyboard.Key;
 
   constructor(scene: Phaser.Scene) {
     const kb = scene.input.keyboard;
@@ -55,6 +59,12 @@ export class InputState {
     this.keyE = kb.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.keyR = kb.addKey(Phaser.Input.Keyboard.KeyCodes.R);
     this.keyEsc = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.keyI = kb.addKey(Phaser.Input.Keyboard.KeyCodes.I);
+    this.keyTab = kb.addKey(Phaser.Input.Keyboard.KeyCodes.TAB);
+    // Keep Tab from moving browser focus away from the game canvas.
+    this.keyTab.on('down', (_key: Phaser.Input.Keyboard.Key, ev?: KeyboardEvent) => {
+      ev?.preventDefault();
+    });
   }
 
   update(touch: TouchFrame): void {
@@ -84,6 +94,8 @@ export class InputState {
     this.interactPressed = justDown(this.keyE) || space || touch.interact;
     this.restartPressed = justDown(this.keyR) || touch.restart;
     this.menuPressed = justDown(this.keyEsc) || touch.menu;
+    this.inventoryPressed =
+      justDown(this.keyI) || justDown(this.keyTab) || touch.inventory;
   }
 }
 
