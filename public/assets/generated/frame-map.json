@@ -34,7 +34,7 @@
       3,
       4
     ],
-    "attack_right": [
+    "attack_left": [
       6,
       7,
       8,
@@ -46,13 +46,14 @@
       14,
       17
     ],
-    "attack_left": [
-      18,
-      17,
-      20,
-      14
-    ]
+    "attack_right": "flip(attack_left)"
   },
+  "attack_right_from_left": [
+    0,
+    1,
+    2,
+    3
+  ],
   "hurt_map": {
     "hurt_down": 0,
     "hurt_right": 2,
@@ -175,25 +176,25 @@
       "x1": 221,
       "y1": 509
     },
-    "attack_right_0": {
+    "attack_left_0": {
       "x0": 254,
       "y0": 479,
       "x1": 285,
       "y1": 510
     },
-    "attack_right_1": {
+    "attack_left_1": {
       "x0": 288,
       "y0": 481,
       "x1": 318,
       "y1": 510
     },
-    "attack_right_2": {
+    "attack_left_2": {
       "x0": 325,
       "y0": 479,
       "x1": 349,
       "y1": 509
     },
-    "attack_right_3": {
+    "attack_left_3": {
       "x0": 355,
       "y0": 480,
       "x1": 390,
@@ -223,28 +224,28 @@
       "x1": 737,
       "y1": 510
     },
-    "attack_left_0": {
-      "x0": 768,
+    "attack_right_0": {
+      "x0": 254,
       "y0": 479,
-      "x1": 802,
+      "x1": 285,
       "y1": 510
     },
-    "attack_left_1": {
-      "x0": 709,
-      "y0": 479,
-      "x1": 737,
+    "attack_right_1": {
+      "x0": 288,
+      "y0": 481,
+      "x1": 318,
       "y1": 510
     },
-    "attack_left_2": {
-      "x0": 836,
-      "y0": 491,
-      "x1": 862,
-      "y1": 521
-    },
-    "attack_left_3": {
-      "x0": 619,
+    "attack_right_2": {
+      "x0": 325,
       "y0": 479,
-      "x1": 642,
+      "x1": 349,
+      "y1": 509
+    },
+    "attack_right_3": {
+      "x0": 355,
+      "y0": 480,
+      "x1": 390,
       "y1": 510
     },
     "hurt_down_0": {
@@ -305,6 +306,8 @@
   "notes": [
     "4-dir walk; Phaser flipX left\u2192right for walk",
     "hurt has native 4-dir frames; death is shared knockdown then lie",
-    "attack boxes expand via swoosh only, clamped to neighbor midpoints (no clone bodies)"
+    "attack boxes expand via swoosh only, clamped to neighbor midpoints (no clone bodies)",
+    "attack_left = sheet cells 6\u20139 (left-facing front slash); attack_right = flip(attack_left)",
+    "old map had 6\u20139 as attack_right and up-ish cells as attack_left \u2192 L/R slash reversed vs facing"
   ]
 }

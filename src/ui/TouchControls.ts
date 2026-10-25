@@ -30,8 +30,17 @@ type HeldButton = {
 const UI_DEPTH = 1200;
 
 /**
- * Camera-fixed joystick (bottom-left) and buttons.
+ * Floating virtual joystick (left half) + fixed action buttons (right).
  * Shown only on touch-capable devices.
+ *
+ * Stick UX:
+ * - First touch down anywhere on the **left half** of the screen becomes the
+ *   stick origin (base + thumb appear there).
+ * - Drag from that point = direction (up/down/left/right).
+ * - Release = hide stick / zero input.
+ * - Right-side ATK／技／包／E buttons are never stolen by the stick zone.
+ *
+ * Desktop keyboard WASD is unchanged (handled outside this class).
  *
  * Hit areas must be centered on (radius, radius): Phaser translates the pointer
  * into object space then adds displayOrigin before Circle.Contains. A hit area
@@ -55,11 +64,14 @@ export class TouchControls {
   private attackReleased = false;
   private attackPointerId: number | null = null;
   private stickPointerId: number | null = null;
+  /** Origin of the active floating stick (set on pointerdown). */
   private baseX = 0;
   private baseY = 0;
   private baseRadius = 36;
   private maxTravel = 28;
+  private stickBase?: Phaser.GameObjects.Arc;
   private thumb?: Phaser.GameObjects.Arc;
+  private stickZone?: Phaser.GameObjects.Zone;
   private held = new Map<number, HeldButton>();
 
   constructor(scene: Phaser.Scene) {
@@ -69,29 +81,33 @@ export class TouchControls {
 
     const w = scene.scale.width;
     const h = scene.scale.height;
-    this.baseX = 64;
-    this.baseY = h - 62;
     this.baseRadius = 36;
     this.maxTravel = 28;
 
-    const base = scene.add.circle(this.baseX, this.baseY, this.baseRadius, 0x8ea4bc, 0.32);
-    base.setStrokeStyle(2, 0xffffff, 0.5);
-    base.setScrollFactor(0);
-    base.setDepth(UI_DEPTH);
-    // Hit radius > paint radius; center at (r, r) after Phaser's origin normalization.
-    enableCircleHit(base, this.baseRadius, 52);
-    base.setData('touchUi', 'stick');
-    base.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.stickPointerId !== null) return;
-      this.stickPointerId = pointer.id;
-      this.placeThumb(pointer.x, pointer.y);
+    // Invisible left-half capture zone — first touch here = stick origin.
+    // Right half is reserved for ATK／技／包／E so those buttons keep priority.
+    const halfW = w * 0.5;
+    this.stickZone = scene.add.zone(halfW * 0.5, h * 0.5, halfW, h);
+    this.stickZone.setScrollFactor(0);
+    this.stickZone.setDepth(UI_DEPTH - 1);
+    this.stickZone.setInteractive();
+    this.stickZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      this.beginStick(pointer);
     });
 
-    this.thumb = scene.add.circle(this.baseX, this.baseY, 14, 0xf4f8fc, 0.9);
+    // Stick visuals start hidden; shown at the touch origin on pointerdown.
+    this.stickBase = scene.add.circle(0, 0, this.baseRadius, 0x8ea4bc, 0.32);
+    this.stickBase.setStrokeStyle(2, 0xffffff, 0.5);
+    this.stickBase.setScrollFactor(0);
+    this.stickBase.setDepth(UI_DEPTH);
+    this.stickBase.setVisible(false);
+    this.stickBase.disableInteractive();
+
+    this.thumb = scene.add.circle(0, 0, 14, 0xf4f8fc, 0.9);
     this.thumb.setStrokeStyle(2, 0xffffff, 0.85);
     this.thumb.setScrollFactor(0);
     this.thumb.setDepth(UI_DEPTH + 1);
-    // Thumb must not steal hits from the stick base.
+    this.thumb.setVisible(false);
     this.thumb.disableInteractive();
 
     this.makeButton(w - 48, h - 58, 30, 'ATK', 11, 0xb42323, 'attack', 40);
@@ -130,6 +146,25 @@ export class TouchControls {
     return frame;
   }
 
+  private beginStick(pointer: Phaser.Input.Pointer): void {
+    if (this.stickPointerId !== null) return;
+    // Guard: never capture touches that land on the right half (buttons live there).
+    if (pointer.x >= this.scene.scale.width * 0.5) return;
+    this.stickPointerId = pointer.id;
+    this.baseX = pointer.x;
+    this.baseY = pointer.y;
+    if (this.stickBase?.active) {
+      this.stickBase.setPosition(this.baseX, this.baseY);
+      this.stickBase.setVisible(true);
+    }
+    if (this.thumb?.active) {
+      this.thumb.setPosition(this.baseX, this.baseY);
+      this.thumb.setVisible(true);
+    }
+    this.moveX = 0;
+    this.moveY = 0;
+  }
+
   private makeButton(
     x: number,
     y: number,
@@ -145,6 +180,7 @@ export class TouchControls {
     circle.setStrokeStyle(2, 0xffffff, 0.7);
     circle.setScrollFactor(0);
     // Interactive circle above the label so topOnly never skips the hit target.
+    // Depth above stickZone so right-side buttons win when overlapping mid-screen.
     circle.setDepth(UI_DEPTH + 4);
     enableCircleHit(circle, radius, hitRadius);
     circle.setData('touchUi', edge);
@@ -224,7 +260,8 @@ export class TouchControls {
     this.stickPointerId = null;
     this.moveX = 0;
     this.moveY = 0;
-    if (this.thumb?.active) this.thumb.setPosition(this.baseX, this.baseY);
+    if (this.stickBase?.active) this.stickBase.setVisible(false);
+    if (this.thumb?.active) this.thumb.setVisible(false);
   }
 }
 

@@ -42,12 +42,16 @@ WALK_MAP = {
     "walk_up": [4, 21, 22, 23, 24],
     "walk_left": [2, 9, 10, 12],
 }
+# Side attacks: sheet cells 6–9 face LEFT (cape bias matches walk_left; swoosh
+# is in front on the left). Previously labeled attack_right → slash looked
+# opposite to move/hitbox facing. No clean native right-facing side poses →
+# pack attack_right as horizontal flips of attack_left (same as Prim).
 ATK_MAP = {
     "attack_down": [0, 1, 3, 4],
-    "attack_right": [6, 7, 8, 9],
+    "attack_left": [6, 7, 8, 9],
     "attack_up": [10, 12, 14, 17],
-    "attack_left": [18, 17, 20, 14],
 }
+ATK_RIGHT_FROM_LEFT = [0, 1, 2, 3]
 # band2 (y=97..126) directional hurt standing frames
 HURT_MAP = {
     "hurt_down": 0,
@@ -120,12 +124,21 @@ def main():
             name = f"{prefix}_{i}"
             entries.append((name, chroma(arr, walk[idx])))
             boxes[name] = walk[idx]
+    left_imgs = []
     for prefix, idxs in ATK_MAP.items():
         for i, idx in enumerate(idxs):
             name = f"{prefix}_{i}"
             box = expand_with_swoosh(mask, swoosh, atk[idx], W, H, neighbors=atk)
-            entries.append((name, scrub_ghost_fragments(chroma(arr, box))))
+            img = scrub_ghost_fragments(chroma(arr, box))
+            entries.append((name, img))
             boxes[name] = box
+            if prefix == "attack_left":
+                left_imgs.append(img)
+    for i in ATK_RIGHT_FROM_LEFT:
+        name = f"attack_right_{i}"
+        flipped = left_imgs[i].transpose(Image.FLIP_LEFT_RIGHT)
+        entries.append((name, flipped))
+        boxes[name] = boxes[f"attack_left_{i}"]  # source box (pre-flip)
 
     for name, idx in HURT_MAP.items():
         frame_name = f"{name}_0"
@@ -183,7 +196,7 @@ def main():
                 "frames": frames,
                 "meta": {
                     "app": "extract_eric.py",
-                    "version": "1.2",
+                    "version": "1.3",
                     "image": "eric-atlas.png",
                     "format": "RGBA8888",
                     "size": {"w": atlas_w, "h": atlas_h},
@@ -203,7 +216,8 @@ def main():
                 "death_band": "y=39..70 (knockdown 5 frames)",
                 "hurt_band": "y=97..126 (directional hurt standing)",
                 "walk_map": WALK_MAP,
-                "attack_map": ATK_MAP,
+                "attack_map": {**ATK_MAP, "attack_right": "flip(attack_left)"},
+                "attack_right_from_left": ATK_RIGHT_FROM_LEFT,
                 "hurt_map": HURT_MAP,
                 "death_idx": DEATH_IDX,
                 "boxes": {
@@ -213,6 +227,8 @@ def main():
                     "4-dir walk; Phaser flipX left→right for walk",
                     "hurt has native 4-dir frames; death is shared knockdown then lie",
                     "attack boxes expand via swoosh only, clamped to neighbor midpoints (no clone bodies)",
+                    "attack_left = sheet cells 6–9 (left-facing front slash); attack_right = flip(attack_left)",
+                    "old map had 6–9 as attack_right and up-ish cells as attack_left → L/R slash reversed vs facing",
                 ],
             },
             f,
