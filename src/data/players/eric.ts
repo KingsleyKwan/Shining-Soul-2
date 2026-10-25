@@ -3,8 +3,8 @@ import type { PlayerData } from '../types';
 /** Warrior — balanced HP / speed. Atlas: Claire Starsword @ Spriters Resource. */
 export const ERIC_DATA: PlayerData = {
   id: 'eric',
-  label: 'Eric',
-  subtitle: 'Warrior · balanced',
+  label: '艾瑞克',
+  subtitle: '戰士 · 均衡',
   stats: { maxHp: 5, str: 3, speed: 110 },
   weapons: { allowedTypes: ['sword'] },
   activeSkill: {

@@ -59,7 +59,7 @@ export function showGameOverDom(next: GameOverActions): void {
   ].join(';');
 
   const title = document.createElement('div');
-  title.textContent = 'GAME OVER';
+  title.textContent = '遊戲結束';
   title.style.cssText = 'font-size:28px;color:#ff8888;margin-bottom:8px;letter-spacing:2px;';
 
   const sub = document.createElement('div');

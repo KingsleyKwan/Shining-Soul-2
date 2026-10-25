@@ -3,8 +3,8 @@ import type { PlayerData } from '../types';
 /** Ninja — lower HP, higher speed. Atlas: Claire Starsword @ Spriters Resource. */
 export const RAIZEN_DATA: PlayerData = {
   id: 'raizen',
-  label: 'Raizen',
-  subtitle: 'Ninja · +speed',
+  label: '雷禪',
+  subtitle: '忍者 · 速度↑',
   stats: { maxHp: 4, str: 3, speed: 135 },
   weapons: { allowedTypes: ['kunai'] },
   activeSkill: {

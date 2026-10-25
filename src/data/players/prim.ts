@@ -3,8 +3,8 @@ import type { PlayerData } from '../types';
 /** Priestess — higher HP, slightly slower. Atlas: Claire Starsword @ Spriters Resource. */
 export const PRIM_DATA: PlayerData = {
   id: 'prim',
-  label: 'Prim',
-  subtitle: 'Priestess · +HP',
+  label: '普莉姆',
+  subtitle: '祭司 · 生命↑',
   stats: { maxHp: 7, str: 2, speed: 100 },
   weapons: { allowedTypes: ['staff'] },
   activeSkill: {

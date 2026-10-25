@@ -267,7 +267,7 @@ export class GameScene extends Phaser.Scene {
     this.refreshRoomHud();
 
     this.add
-      .text(8, 72, `Class ${this.player.hero.label}`, {
+      .text(8, 72, `職業 ${this.player.hero.label}`, {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#d0ffd0',
@@ -705,7 +705,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshGoldHud(): void {
-    this.goldHud?.setText(`Gold ${this.gold}`);
+    this.goldHud?.setText(`金幣 ${this.gold}`);
   }
 
   private showLootToast(msg: string): void {

@@ -21,14 +21,14 @@ export class SelectScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#142018');
 
     this.add
-      .text(width / 2, 28, 'SHINING SOUL II', {
+      .text(width / 2, 28, '光明之魂2', {
         fontFamily: 'monospace',
         fontSize: '18px',
         color: '#e8ffe8',
       })
       .setOrigin(0.5);
     this.add
-      .text(width / 2, 48, 'web prototype — pick a hero', {
+      .text(width / 2, 48, '網頁試作 — 揀角色', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#88aa88',
@@ -83,7 +83,7 @@ export class SelectScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
       const stats = this.add
-        .text(0, 78, `HP ${hero.maxHp}  SPD ${hero.speed}`, {
+        .text(0, 78, `生命 ${hero.maxHp}  速度 ${hero.speed}`, {
           fontFamily: 'monospace',
           fontSize: '8px',
           color: '#c8e0c8',
@@ -101,7 +101,7 @@ export class SelectScene extends Phaser.Scene {
     });
 
     this.add
-      .text(width / 2, height - 36, '1 / 2 / 3 · tap card / 點選 · Enter / Space', {
+      .text(width / 2, height - 36, '1 / 2 / 3 · 點選卡片 · Enter / Space', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#c8e8c8',
@@ -111,7 +111,7 @@ export class SelectScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(width / 2, height - 16, 'Sprites: Claire Starsword · fan learning only', {
+      .text(width / 2, height - 16, '精靈圖：Claire Starsword · 僅供學習', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#667766',
