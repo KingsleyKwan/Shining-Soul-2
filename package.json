@@ -9,7 +9,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "prebuild": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py",
-    "atlas": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py"
+    "atlas": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py",
+    "predev": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py"
   },
   "dependencies": {
     "phaser": "3.90.0"
