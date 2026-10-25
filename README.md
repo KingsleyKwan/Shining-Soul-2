@@ -79,7 +79,7 @@ Shown when the device reports touch (`maxTouchPoints`, a coarse pointer, or Phas
 
 | Control / 控件 | Action / 作用 |
 |----------------|---------------|
-| Joystick（bottom-left / 左下） | Move / 移動（鬆開歸零，拖出底盤仍有效） |
+| 浮動方向盤（左半屏任意處撳落 = 原點，再拖動方向；鬆開隱藏歸零） / Floating stick（left half） | Move / 移動 |
 | **ATK**（bottom-right / 右下） | Tap or **hold** to charge / 輕點或**長按**蓄力（同 Space / Z） |
 | **技**（above **E** / E 上方） | Active skill / 主動技能（同 **Q**，有冷卻） |
 | **E**（beside ATK / 攻擊鍵旁） | Open chest / 開箱（同鍵盤 E） |
