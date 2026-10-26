@@ -8,6 +8,8 @@ import { HERO_ORDER, HEROES } from '../data/players';
  *
  * Credits (fan learning only):
  * - Eric / Prim / Raizen / Paste: Claire Starsword @ The Spriters Resource
+ * - Ryle atlas: recolored Claire Starsword hero sheet (same source as eric/prim/raizen),
+ *   palette-shifted for the archer. Arrow VFX are procedural.
  * - Captain Gully: darkbolt99 @ The Spriters Resource
  * - Map tiles: original placeholders (Spriters has no SS2 tilesets)
  */
@@ -23,6 +25,11 @@ export class BootScene extends Phaser.Scene {
       'raizen',
       'assets/generated/raizen-atlas.png',
       'assets/generated/raizen-atlas.json',
+    );
+    this.load.atlas(
+      'ryle',
+      'assets/generated/ryle-atlas.png',
+      'assets/generated/ryle-atlas.json',
     );
     this.load.atlas(
       'paste',

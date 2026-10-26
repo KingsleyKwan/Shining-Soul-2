@@ -34,18 +34,34 @@ export type PlayerInput = {
 /** Below Paste (220) / Gully (280) iframes so each flurry pulse can connect. */
 const FLURRY_IFRAME_MS = 60;
 
+type BoltVisual = Phaser.GameObjects.Arc | Phaser.GameObjects.Rectangle;
+
 type Bolt = {
   zone: Phaser.GameObjects.Zone;
-  gfx: Phaser.GameObjects.Arc;
-  core: Phaser.GameObjects.Arc;
+  gfx: BoltVisual;
+  core: BoltVisual;
   originX: number;
   originY: number;
   maxRange: number;
+  /** Shaft facing in radians. Omitted for orb bolts. */
+  rotation?: number;
+  /** Places `core` this far ahead of the body along `rotation`. */
+  tipLead?: number;
 };
+
+/** Charge-shot tuning for bow basics. Hit size grows only at stage 2. */
+const BOW_SHOT = [
+  { speed: 280, range: 220, hit: 12 },
+  { speed: 340, range: 260, hit: 12 },
+  { speed: 380, range: 300, hit: 16 },
+  { speed: 400, range: 320, hit: 12 },
+] as const;
+
+const BOW_FAN_RAD = 0.22;
 
 /**
  * Data-driven playable hero.
- * Charge slash, gear mods, and one active skill (Q / 技) from PlayerData.
+ * Charge slash or bow volley, gear mods, and one active skill (Q / 技) from PlayerData.
  */
 export class PlayerBase extends CharacterBase {
   readonly playerData: PlayerData;
@@ -59,6 +75,8 @@ export class PlayerBase extends CharacterBase {
   private skillTimers: Phaser.Time.TimerEvent[] = [];
   private skillVfx: Phaser.GameObjects.GameObject[] = [];
   private projectiles: Bolt[] = [];
+  /** Independent rain zones — not the single melee hitbox slot. */
+  private rainZones: Phaser.GameObjects.Zone[] = [];
   private removed = false;
   private charging = false;
   private chargeStartAt = 0;
@@ -378,7 +396,20 @@ export class PlayerBase extends CharacterBase {
     this.animCtl.setFacing(this.facing);
     this.animCtl.playIdle();
     this.animCtl.playAttack();
+    if (this.usesBowBasic()) {
+      this.clearHitbox();
+      this.fireBowBasic(stage);
+      return;
+    }
     this.spawnHitbox(stage);
+  }
+
+  /** Ranged basic: explicit bow flag, or a weapon list that includes bow. */
+  private usesBowBasic(): boolean {
+    return (
+      this.playerData.basicAttack === 'bow' ||
+      this.playerData.weapons.allowedTypes.includes('bow')
+    );
   }
 
   private tryStartSkill(input: PlayerInput): void {
@@ -395,6 +426,9 @@ export class PlayerBase extends CharacterBase {
         break;
       case 'shadow_flurry':
         this.startShadowFlurry();
+        break;
+      case 'rain_of_arrows':
+        this.startRainOfArrows();
         break;
     }
   }
@@ -477,11 +511,42 @@ export class PlayerBase extends CharacterBase {
     this.trackTimer(280, () => this.endSkill());
   }
 
+  /**
+   * Stand still and drop 5–7 short zones in a cone ahead.
+   * Zones overlap in time, so they are not the single melee hitbox.
+   */
+  private startRainOfArrows(): void {
+    this.beginSkillLock();
+    this.setVelocity(0, 0);
+    const count = 5 + Math.floor(Math.random() * 3);
+    const dir = this.facingUnit();
+    const px = -dir.y;
+    const py = dir.x;
+    let cursor = 0;
+    let lastDelay = 0;
+    for (let i = 0; i < count; i++) {
+      const delay = cursor;
+      lastDelay = delay;
+      this.trackTimer(delay, () => {
+        const along = 30 + Math.random() * 72;
+        const lateral = (Math.random() - 0.5) * (28 + along * 0.35);
+        const ox = dir.x * along + px * lateral;
+        const oy = dir.y * along + py * lateral;
+        const lifeMs = 120 + Math.floor(Math.random() * 41);
+        this.spawnRainZone(ox, oy, lifeMs);
+        this.spawnRainStreak(this.x + ox, this.y + oy);
+      });
+      cursor += 50 + Math.floor(Math.random() * 21);
+    }
+    this.trackTimer(lastDelay + 550, () => this.endSkill());
+  }
+
   private endSkill(): void {
     if (!this.skillActive) return;
     this.skillActive = false;
     this.skillVelocityLock = false;
     this.clearSkillTimers();
+    this.destroyRainZones();
     // Drop any lingering slash arcs / rings so skills cannot leave ghost gfx.
     this.destroySkillVfx();
     if (!this.dead && !this.dying && !this.stunned) this.setVelocity(0, 0);
@@ -495,6 +560,7 @@ export class PlayerBase extends CharacterBase {
     this.skillActive = false;
     this.skillVelocityLock = false;
     this.clearSkillTimers();
+    this.destroyRainZones();
     this.destroySkillVfx();
     if (dropBolts) this.destroyProjectiles();
   }
@@ -601,6 +667,107 @@ export class PlayerBase extends CharacterBase {
     });
   }
 
+  private fireBowBasic(stage: number): void {
+    const facing = this.facingUnit();
+    const base = Math.atan2(facing.y, facing.x);
+    const shot = BOW_SHOT[Math.min(stage, BOW_SHOT.length - 1)] ?? BOW_SHOT[0];
+    const angles = stage >= 3 ? [base - BOW_FAN_RAD, base, base + BOW_FAN_RAD] : [base];
+    const damage = this.getSlashDamage(stage);
+    for (const ang of angles) {
+      this.spawnArrow(Math.cos(ang), Math.sin(ang), shot.speed, shot.range, damage, shot.hit, ang);
+    }
+  }
+
+  /** One piercing arrow. Each zone keeps its own hit set in GameScene. */
+  private spawnArrow(
+    dirX: number,
+    dirY: number,
+    speed: number,
+    maxRange: number,
+    damage: number,
+    hitSize: number,
+    rotation: number,
+  ): void {
+    const x = this.x + dirX * 18;
+    const y = this.y + dirY * 18;
+
+    const zone = this.scene.add.zone(x, y, hitSize, hitSize);
+    this.scene.physics.add.existing(zone, false);
+    const body = zone.body as Phaser.Physics.Arcade.Body;
+    body.setAllowGravity(false);
+    body.setImmovable(true);
+    body.setVelocity(dirX * speed, dirY * speed);
+    zone.setData('damage', damage);
+    this.onHitboxSpawn?.(zone);
+
+    const shaft = this.scene.add.rectangle(x, y, 16, 2, 0xe8c070, 1).setDepth(16);
+    shaft.setRotation(rotation);
+    const tipLead = 9;
+    const tip = this.scene.add
+      .rectangle(x + dirX * tipLead, y + dirY * tipLead, 5, 3, 0xfff6d0, 1)
+      .setDepth(17);
+    tip.setRotation(rotation);
+
+    this.projectiles.push({
+      zone,
+      gfx: shaft,
+      core: tip,
+      originX: x,
+      originY: y,
+      maxRange,
+      rotation,
+      tipLead,
+    });
+  }
+
+  private spawnRainZone(ox: number, oy: number, lifeMs: number): void {
+    const zone = this.scene.add.zone(this.x + ox, this.y + oy, 22, 22);
+    this.scene.physics.add.existing(zone, false);
+    const body = zone.body as Phaser.Physics.Arcade.Body;
+    body.setAllowGravity(false);
+    body.setImmovable(true);
+    zone.setData('damage', this.getSlashDamage(1));
+    this.rainZones.push(zone);
+    this.onHitboxSpawn?.(zone);
+    this.scene.time.delayedCall(lifeMs, () => {
+      this.destroyRainZone(zone);
+    });
+  }
+
+  private destroyRainZone(zone: Phaser.GameObjects.Zone): void {
+    const i = this.rainZones.indexOf(zone);
+    if (i >= 0) this.rainZones.splice(i, 1);
+    if (zone.active) zone.destroy();
+  }
+
+  private destroyRainZones(): void {
+    for (const zone of [...this.rainZones]) this.destroyRainZone(zone);
+  }
+
+  /** Gold/green streak falling onto a rain impact. */
+  private spawnRainStreak(x: number, y: number): void {
+    const g = this.scene.add.graphics().setDepth(17);
+    g.setPosition(x, y - 22);
+    this.ownVfx(g);
+    g.lineStyle(2, 0xe8c070, 0.95);
+    g.lineBetween(-1, -14, 0, 2);
+    g.lineStyle(2, 0x7dcc6a, 0.9);
+    g.lineBetween(3, -12, 1, 6);
+    g.lineStyle(1, 0xfff4c0, 0.95);
+    g.lineBetween(0, -8, 0, 8);
+    g.fillStyle(0xc6f0a0, 0.9);
+    g.fillCircle(1, 8, 2);
+    this.scene.tweens.add({
+      targets: g,
+      y: y + 2,
+      alpha: 0,
+      duration: 150,
+      onComplete: () => {
+        if (g.active) g.destroy();
+      },
+    });
+  }
+
   private tickProjectiles(): void {
     const bounds = this.scene.physics.world.bounds;
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
@@ -612,8 +779,19 @@ export class PlayerBase extends CharacterBase {
       }
       const x = body.center.x;
       const y = body.center.y;
-      if (bolt.gfx.active) bolt.gfx.setPosition(x, y);
-      if (bolt.core.active) bolt.core.setPosition(x, y);
+      const rot = bolt.rotation;
+      if (bolt.gfx.active) {
+        bolt.gfx.setPosition(x, y);
+        if (rot !== undefined) bolt.gfx.setRotation(rot);
+      }
+      if (bolt.core.active) {
+        if (rot !== undefined && bolt.tipLead) {
+          bolt.core.setPosition(x + Math.cos(rot) * bolt.tipLead, y + Math.sin(rot) * bolt.tipLead);
+          bolt.core.setRotation(rot);
+        } else {
+          bolt.core.setPosition(x, y);
+        }
+      }
       const dist = Phaser.Math.Distance.Between(bolt.originX, bolt.originY, x, y);
       const outside =
         x < bounds.x - 8 || y < bounds.y - 8 || x > bounds.right + 8 || y > bounds.bottom + 8;
@@ -745,6 +923,7 @@ export class PlayerBase extends CharacterBase {
     this.removed = true;
     this.skillActive = false;
     this.clearSkillTimers();
+    this.destroyRainZones();
     this.destroySkillVfx();
     this.destroyProjectiles();
     try {

@@ -3,7 +3,7 @@ import { HERO_ORDER, HEROES, SELECTED_HERO_KEY, type HeroId } from '../data/play
 import * as SaveManager from '../systems/SaveManager';
 
 /**
- * Title + character select. 1/2/3 or click → GameScene.
+ * Title + character select. 1/2/3/4 or click → GameScene.
  */
 export class SelectScene extends Phaser.Scene {
   private selected: HeroId = 'eric';
@@ -37,8 +37,9 @@ export class SelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const slotW = 130;
-    const gap = 12;
+    // Four cards on a 480-wide canvas: total must stay ≤ width - 16.
+    const slotW = 104;
+    const gap = 8;
     const total = HERO_ORDER.length * slotW + (HERO_ORDER.length - 1) * gap;
     let x0 = (width - total) / 2 + slotW / 2;
     const y = height / 2;
@@ -53,7 +54,7 @@ export class SelectScene extends Phaser.Scene {
       const num = this.add
         .text(0, -72, `${i + 1}`, {
           fontFamily: 'monospace',
-          fontSize: '12px',
+          fontSize: '11px',
           color: '#aad0aa',
         })
         .setOrigin(0.5);
@@ -73,21 +74,21 @@ export class SelectScene extends Phaser.Scene {
       const label = this.add
         .text(0, 48, hero.label, {
           fontFamily: 'monospace',
-          fontSize: '12px',
+          fontSize: '11px',
           color: '#f0fff0',
         })
         .setOrigin(0.5);
       const sub = this.add
         .text(0, 64, hero.subtitle, {
           fontFamily: 'monospace',
-          fontSize: '8px',
+          fontSize: '7px',
           color: '#9bbb9b',
         })
         .setOrigin(0.5);
       const stats = this.add
         .text(0, 78, `生命 ${hero.maxHp}  速度 ${hero.speed}`, {
           fontFamily: 'monospace',
-          fontSize: '8px',
+          fontSize: '7px',
           color: '#c8e0c8',
         })
         .setOrigin(0.5);
@@ -103,7 +104,7 @@ export class SelectScene extends Phaser.Scene {
     });
 
     this.add
-      .text(width / 2, height - 54, '1 / 2 / 3 · 點選卡片 · Enter / Space', {
+      .text(width / 2, height - 54, '1 / 2 / 3 / 4 · 點選卡片 · Enter / Space', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#c8e8c8',
@@ -132,14 +133,27 @@ export class SelectScene extends Phaser.Scene {
     this.setSelected(saved?.heroId ?? 'eric');
 
     if (!this.input.keyboard) return;
-    this.input.keyboard.on('keydown-ONE', () => this.setSelected('eric'));
-    this.input.keyboard.on('keydown-TWO', () => this.setSelected('prim'));
-    this.input.keyboard.on('keydown-THREE', () => this.setSelected('raizen'));
-    this.input.keyboard.on('keydown-NUMPAD_ONE', () => this.setSelected('eric'));
-    this.input.keyboard.on('keydown-NUMPAD_TWO', () => this.setSelected('prim'));
-    this.input.keyboard.on('keydown-NUMPAD_THREE', () => this.setSelected('raizen'));
-    this.input.keyboard.on('keydown-ENTER', () => this.confirm());
-    this.input.keyboard.on('keydown-SPACE', () => this.confirm());
+    const keyboard = this.input.keyboard;
+    const digitCodes = [
+      Phaser.Input.Keyboard.KeyCodes.ONE,
+      Phaser.Input.Keyboard.KeyCodes.TWO,
+      Phaser.Input.Keyboard.KeyCodes.THREE,
+      Phaser.Input.Keyboard.KeyCodes.FOUR,
+    ];
+    const numpadCodes = [
+      Phaser.Input.Keyboard.KeyCodes.NUMPAD_ONE,
+      Phaser.Input.Keyboard.KeyCodes.NUMPAD_TWO,
+      Phaser.Input.Keyboard.KeyCodes.NUMPAD_THREE,
+      Phaser.Input.Keyboard.KeyCodes.NUMPAD_FOUR,
+    ];
+    HERO_ORDER.forEach((id, i) => {
+      const digit = digitCodes[i];
+      const pad = numpadCodes[i];
+      if (digit !== undefined) keyboard.addKey(digit).on('down', () => this.setSelected(id));
+      if (pad !== undefined) keyboard.addKey(pad).on('down', () => this.setSelected(id));
+    });
+    keyboard.on('keydown-ENTER', () => this.confirm());
+    keyboard.on('keydown-SPACE', () => this.confirm());
   }
 
   private setSelected(id: HeroId): void {
