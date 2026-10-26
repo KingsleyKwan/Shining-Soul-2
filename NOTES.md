@@ -22,7 +22,7 @@ Spawn grace is about 2 seconds. Pastes are placed off the door tiles so the open
 python3 tools/make_dungeon_map.py
 ```
 
-That rewrites `public/assets/maps/dungeon-room.json` and `dungeon-room.tmj`. BootScene still loads keys `dungeon-room` and `dungeon-tiles`.
+That rewrites `public/assets/maps/dungeon-room.json` and `dungeon-room.tmj` plus `dungeon-tiles.png`. Runtime rooms use MapGenerator; BootScene loads `dungeon-tiles` only (room JSON stripped from dist).
 
 Room rects are map properties `roomA`, `roomC`, `roomB`, `roomBoss` (`x,y,w,h` pixels).
 

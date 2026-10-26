@@ -12,6 +12,8 @@ const config: Phaser.Types.Core.GameConfig = {
   backgroundColor: '#1a2a1a',
   pixelArt: true,
   roundPixels: true,
+  fps: { target: 60, forceSetTimeOut: false },
+  render: { antialias: false, powerPreference: 'high-performance' },
   // Long-press on the stick should not open the browser menu.
   disableContextMenu: true,
   input: {

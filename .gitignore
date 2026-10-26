@@ -8,3 +8,5 @@ tools/eric_hurt/
 tools/frames/
 tools/gully/
 tools/paste/
+__pycache__/
+*.pyc
