@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { HERO_ORDER, HEROES, SELECTED_HERO_KEY, type HeroId } from '../data/players';
+import * as SaveManager from '../systems/SaveManager';
 
 /**
  * Title + character select. 1/2/3 or click → GameScene.
@@ -19,6 +20,7 @@ export class SelectScene extends Phaser.Scene {
   create(): void {
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor('#142018');
+    const saved = SaveManager.load();
 
     this.add
       .text(width / 2, 28, '光明之魂2', {
@@ -39,7 +41,7 @@ export class SelectScene extends Phaser.Scene {
     const gap = 12;
     const total = HERO_ORDER.length * slotW + (HERO_ORDER.length - 1) * gap;
     let x0 = (width - total) / 2 + slotW / 2;
-    const y = height / 2 + 8;
+    const y = height / 2;
 
     this.cards = [];
     HERO_ORDER.forEach((id, i) => {
@@ -101,7 +103,7 @@ export class SelectScene extends Phaser.Scene {
     });
 
     this.add
-      .text(width / 2, height - 36, '1 / 2 / 3 · 點選卡片 · Enter / Space', {
+      .text(width / 2, height - 54, '1 / 2 / 3 · 點選卡片 · Enter / Space', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#c8e8c8',
@@ -110,15 +112,24 @@ export class SelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    const continueFill = saved ? 0x3a3420 : 0x1e3020;
+    const continueStroke = saved ? 0xffe066 : 0x88cc88;
+    this.addMenuButton(width / 2 - 40, height - 32, '繼續', continueFill, continueStroke, () => {
+      this.confirm();
+    });
+    this.addMenuButton(width / 2 + 40, height - 32, '新遊戲', 0x1e3020, 0x4a7a4a, () => {
+      this.startNewGame();
+    });
+
     this.add
-      .text(width / 2, height - 16, '精靈圖：Claire Starsword · 僅供學習', {
+      .text(width / 2, height - 12, '精靈圖：Claire Starsword · 僅供學習', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#667766',
       })
       .setOrigin(0.5);
 
-    this.setSelected('eric');
+    this.setSelected(saved?.heroId ?? 'eric');
 
     if (!this.input.keyboard) return;
     this.input.keyboard.on('keydown-ONE', () => this.setSelected('eric'));
@@ -140,7 +151,52 @@ export class SelectScene extends Phaser.Scene {
     }
   }
 
+  private addMenuButton(
+    x: number,
+    y: number,
+    label: string,
+    fill: number,
+    stroke: number,
+    onClick: () => void,
+  ): void {
+    const w = 68;
+    const h = 16;
+    const bg = this.add.rectangle(0, 0, w, h, fill, 0.95).setStrokeStyle(1, stroke);
+    const caption = this.add
+      .text(0, 0, label, {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        color: '#e8ffe8',
+      })
+      .setOrigin(0.5);
+    const container = this.add.container(x, y, [bg, caption]).setDepth(5);
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    if (container.input) container.input.cursor = 'pointer';
+    container.on('pointerover', () => bg.setFillStyle(0x345040, 1));
+    container.on('pointerout', () => bg.setFillStyle(fill, 0.95));
+    container.on('pointerdown', () => onClick());
+  }
+
+  /** Keep gold and gear; remember the highlighted hero. */
   private confirm(): void {
+    this.registry.set(SELECTED_HERO_KEY, this.selected);
+    const existing = SaveManager.load();
+    SaveManager.save({
+      version: 1,
+      heroId: this.selected,
+      gold: existing?.gold ?? 0,
+      bag: existing?.bag ?? [],
+      equipped: existing?.equipped ?? {},
+    });
+    this.scene.start('GameScene');
+  }
+
+  /** Drop the profile and start the highlighted hero at 0 gold. */
+  private startNewGame(): void {
+    SaveManager.clear();
     this.registry.set(SELECTED_HERO_KEY, this.selected);
     this.scene.start('GameScene');
   }

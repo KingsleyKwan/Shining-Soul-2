@@ -1,4 +1,11 @@
-import { emptyMods, mergeMods, type ItemMods, type ItemSlot, type RolledItem } from '../data/loot/types';
+import {
+  emptyMods,
+  mergeMods,
+  type ItemMods,
+  type ItemRarity,
+  type ItemSlot,
+  type RolledItem,
+} from '../data/loot/types';
 
 export type EquipSlot = ItemSlot;
 
@@ -113,6 +120,56 @@ export class Inventory {
     return `裝 ${parts.join(' ')}`;
   }
 
+  /** Snapshot for SaveManager. Copies so callers cannot mutate bag state. */
+  toJSON(): { bag: RolledItem[]; equipped: Partial<Record<EquipSlot, RolledItem>> } {
+    const equipped: Partial<Record<EquipSlot, RolledItem>> = {};
+    for (const slot of SLOT_ORDER) {
+      const it = this.equipped[slot];
+      if (it) equipped[slot] = cloneRolledItem(it);
+    }
+    return {
+      bag: this.bag.map(cloneRolledItem),
+      equipped,
+    };
+  }
+
+  /**
+   * Rebuild from a save snapshot. Bad entries are skipped.
+   * Does not use add() — that would auto-equip bag items into empty slots.
+   * Any throw yields an empty inventory.
+   */
+  static fromJSON(data: unknown): Inventory {
+    try {
+      const inv = new Inventory();
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return inv;
+      const raw = data as { bag?: unknown; equipped?: unknown };
+      const seen = new Set<string>();
+
+      const equippedRaw = raw.equipped;
+      if (equippedRaw && typeof equippedRaw === 'object' && !Array.isArray(equippedRaw)) {
+        const eq = equippedRaw as Record<string, unknown>;
+        for (const slot of SLOT_ORDER) {
+          const item = sanitizeRolledItem(eq[slot]);
+          if (!item || item.slot !== slot || seen.has(item.uid)) continue;
+          seen.add(item.uid);
+          inv.equipped[slot] = item;
+        }
+      }
+
+      if (Array.isArray(raw.bag)) {
+        for (const entry of raw.bag) {
+          const item = sanitizeRolledItem(entry);
+          if (!item || seen.has(item.uid)) continue;
+          seen.add(item.uid);
+          inv.bag.push(item);
+        }
+      }
+      return inv;
+    } catch {
+      return new Inventory();
+    }
+  }
+
   private equippedCount(): number {
     let n = 0;
     for (const slot of SLOT_ORDER) if (this.equipped[slot]) n += 1;
@@ -131,4 +188,57 @@ export const SLOT_LABEL_ZH: Record<EquipSlot, string> = {
 function fmtSigned(n: number): string {
   if (n > 0) return `+${n}`;
   return String(n);
+}
+
+const RARITIES = new Set<ItemRarity>(['common', 'magic', 'rare']);
+
+function finiteMod(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+/** Loose item check: require uid, slot, and a mods object. Other fields default. */
+export function sanitizeRolledItem(value: unknown): RolledItem | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.uid !== 'string') return null;
+  const uid = raw.uid.trim();
+  if (!uid) return null;
+  if (raw.slot !== 'weapon' && raw.slot !== 'armor' && raw.slot !== 'accessory') return null;
+  if (!raw.mods || typeof raw.mods !== 'object' || Array.isArray(raw.mods)) return null;
+
+  const modsRaw = raw.mods as Record<string, unknown>;
+  const slot = raw.slot;
+  const rarity: ItemRarity =
+    typeof raw.rarity === 'string' && RARITIES.has(raw.rarity as ItemRarity)
+      ? (raw.rarity as ItemRarity)
+      : 'common';
+  const baseId = typeof raw.baseId === 'string' ? raw.baseId : '';
+  const nameEn = typeof raw.nameEn === 'string' && raw.nameEn ? raw.nameEn : baseId || 'Item';
+  const nameZh = typeof raw.nameZh === 'string' && raw.nameZh ? raw.nameZh : '物品';
+
+  const item: RolledItem = {
+    uid,
+    baseId,
+    slot,
+    rarity,
+    nameEn,
+    nameZh,
+    mods: {
+      damage: finiteMod(modsRaw.damage),
+      speed: finiteMod(modsRaw.speed),
+      str: finiteMod(modsRaw.str),
+      maxHp: finiteMod(modsRaw.maxHp),
+    },
+  };
+  if (typeof raw.weaponType === 'string' && raw.weaponType) item.weaponType = raw.weaponType;
+  if (typeof raw.prefixId === 'string' && raw.prefixId) item.prefixId = raw.prefixId;
+  if (typeof raw.suffixId === 'string' && raw.suffixId) item.suffixId = raw.suffixId;
+  return item;
+}
+
+function cloneRolledItem(item: RolledItem): RolledItem {
+  return {
+    ...item,
+    mods: { ...item.mods },
+  };
 }

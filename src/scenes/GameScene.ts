@@ -8,6 +8,7 @@ import { getHero, SELECTED_HERO_KEY } from '../data/players';
 import { formatItemToast, rollItem } from '../data/loot/roll';
 import { HitFeedback } from '../systems/HitFeedback';
 import { Inventory, type EquipSlot } from '../systems/Inventory';
+import * as SaveManager from '../systems/SaveManager';
 import { InputState } from '../input/InputState';
 import { TouchControls } from '../ui/TouchControls';
 import { InventoryPanel } from '../ui/InventoryPanel';
@@ -124,6 +125,7 @@ export class GameScene extends Phaser.Scene {
     hideStageClearDom();
     hideLootToastDom();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.persistSave();
       hideGameOverDom();
       hideStageClearDom();
       hideLootToastDom();
@@ -140,6 +142,7 @@ export class GameScene extends Phaser.Scene {
     this.inventory = new Inventory();
     this.inventoryOpen = false;
     this.leaving = false;
+    this.loadPersistedState();
 
     const map = this.make.tilemap({ key: 'dungeon-room' });
     const tileset = map.addTilesetImage('dungeon-tiles', 'dungeon-tiles');
@@ -183,6 +186,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, walls);
     // Brief spawn grace so a nearby Paste cannot delete a fresh run.
     this.player.grantSpawnGrace(2000);
+    this.applyLoadedGear();
 
     this.enemies = this.add.group({ runChildUpdate: true });
     // Physics group so slash / charge / Prim bolt / Raizen flurry overlap can call takeDamage.
@@ -349,6 +353,57 @@ export class GameScene extends Phaser.Scene {
       this.audio.toggleMute();
       this.refreshMuteHud();
     });
+
+    // Hero is known and gold / gear are loaded — keep a refresh from dropping them.
+    this.persistSave();
+  }
+
+  /** Restore gold and gear. Corrupt or missing saves stay at the fresh defaults. */
+  private loadPersistedState(): void {
+    try {
+      const saved = SaveManager.load();
+      if (!saved) return;
+      this.gold = saved.gold;
+      this.inventory = Inventory.fromJSON({
+        bag: saved.bag,
+        equipped: saved.equipped,
+      });
+      const current = this.registry.get(SELECTED_HERO_KEY);
+      if (!SaveManager.isHeroId(current)) {
+        this.registry.set(SELECTED_HERO_KEY, saved.heroId);
+      }
+    } catch (err) {
+      console.warn('[SS2] loadPersistedState skipped', err);
+      this.gold = 0;
+      this.inventory = new Inventory();
+    }
+  }
+
+  /** Re-apply equipped mods after the player exists (max HP / speed / damage). */
+  private applyLoadedGear(): void {
+    const hasGear =
+      this.inventory.getEquipped('weapon') ||
+      this.inventory.getEquipped('armor') ||
+      this.inventory.getEquipped('accessory');
+    if (!hasGear) return;
+    this.player.applyGearMods(this.inventory.getMods());
+  }
+
+  private persistSave(): void {
+    try {
+      const current = this.registry.get(SELECTED_HERO_KEY);
+      const heroId = SaveManager.isHeroId(current) ? current : 'eric';
+      const snap = this.inventory.toJSON();
+      SaveManager.save({
+        version: 1,
+        heroId,
+        gold: this.gold,
+        bag: snap.bag,
+        equipped: snap.equipped,
+      });
+    } catch (err) {
+      console.warn('[SS2] persistSave skipped', err);
+    }
   }
 
   private refreshMuteHud(): void {
@@ -615,6 +670,7 @@ export class GameScene extends Phaser.Scene {
     const goldGain = 25;
     this.gold += goldGain;
     this.refreshGoldHud();
+    this.persistSave();
 
     const item = rollItem(Math.random, {
       preferWeapon: true,
@@ -651,6 +707,7 @@ export class GameScene extends Phaser.Scene {
   private giveItem(item: ReturnType<typeof rollItem>): void {
     this.inventory.add(item);
     this.player.applyGearMods(this.inventory.getMods());
+    this.persistSave();
     this.refreshInvHud();
   }
 
@@ -696,6 +753,7 @@ export class GameScene extends Phaser.Scene {
     const before = this.inventory.getBag().find((it) => it.uid === uid);
     if (!this.inventory.equipFromBag(uid)) return;
     this.player.applyGearMods(this.inventory.getMods());
+    this.persistSave();
     this.refreshInvHud();
     this.inventoryPanel.refresh(this.inventory);
     if (before) this.showLootToast(`裝備 ${before.nameZh}`);
@@ -705,6 +763,7 @@ export class GameScene extends Phaser.Scene {
     const prev = this.inventory.getEquipped(slot);
     if (!this.inventory.unequip(slot)) return;
     this.player.applyGearMods(this.inventory.getMods());
+    this.persistSave();
     this.refreshInvHud();
     this.inventoryPanel.refresh(this.inventory);
     if (prev) this.showLootToast(`卸下 ${prev.nameZh}`);
