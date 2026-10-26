@@ -8,6 +8,7 @@ import { getHero, SELECTED_HERO_KEY } from '../data/players';
 import { formatItemToast, rollItem } from '../data/loot/roll';
 import { HitFeedback } from '../systems/HitFeedback';
 import { Inventory, type EquipSlot } from '../systems/Inventory';
+import { generateDungeon } from '../systems/MapGenerator';
 import * as SaveManager from '../systems/SaveManager';
 import { InputState } from '../input/InputState';
 import { TouchControls } from '../ui/TouchControls';
@@ -60,9 +61,16 @@ function isRoomId(value: string | undefined): value is RoomId {
   return value === 'a' || value === 'c' || value === 'b' || value === 'boss';
 }
 
+/** New layout every create (new game, restart, stage-clear 重新開始). */
+function rollDungeonSeed(): number {
+  const clock = Date.now() >>> 0;
+  const noise = Math.floor(Math.random() * 0x7fffffff);
+  return (clock ^ noise) >>> 0;
+}
+
 /**
- * One-stage dungeon (one Tiled map, camera clamps per room).
- * Entry → combat corridor → chest room, and corridor → boss arena.
+ * One-stage dungeon. Each run stamps a new connected room graph
+ * (entry, combat, chest, boss) into Tiled JSON and clamps the camera per room.
  * Door objects teleport with a short fade. The player is soft-clamped to the
  * current room so a doorway cannot be walked through without that teleport.
  * Pastes and the boss simulate only in their own room. After Captain Gully falls,
@@ -99,6 +107,8 @@ export class GameScene extends Phaser.Scene {
   private exitActive = false;
   private transitioning = false;
   private currentRoom: RoomId = 'a';
+  /** Seed of the dungeon generated for this run. Shown on the room HUD. */
+  private runSeed = 0;
   private rooms!: Record<RoomId, Rect>;
   private pathfinder!: TilePathfinder;
   private audio!: GameAudio;
@@ -144,7 +154,15 @@ export class GameScene extends Phaser.Scene {
     this.leaving = false;
     this.loadPersistedState();
 
-    const map = this.make.tilemap({ key: 'dungeon-room' });
+    const generated = generateDungeon(rollDungeonSeed());
+    this.runSeed = generated.seed;
+    const mapKey = 'dungeon-run';
+    this.cache.tilemap.remove(mapKey);
+    this.cache.tilemap.add(mapKey, {
+      format: Phaser.Tilemaps.Formats.TILED_JSON,
+      data: generated.tiled,
+    });
+    const map = this.make.tilemap({ key: mapKey });
     const tileset = map.addTilesetImage('dungeon-tiles', 'dungeon-tiles');
     if (!tileset) {
       throw new Error('Failed to add tileset "dungeon-tiles"');
@@ -153,7 +171,7 @@ export class GameScene extends Phaser.Scene {
     const ground = map.createLayer('ground', tileset, 0, 0);
     const walls = map.createLayer('walls', tileset, 0, 0);
     if (!ground || !walls) {
-      throw new Error('Missing ground/walls layers in dungeon-room map');
+      throw new Error('Missing ground/walls layers in dungeon map');
     }
 
     ground.setDepth(0);
@@ -175,7 +193,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, worldW, worldH);
 
     this.rooms = this.readRooms(map);
-    this.spawns = this.readSpawns(map, this.rooms);
+    this.spawns = this.readSpawns(map);
 
     const hero = getHero(this.registry.get(SELECTED_HERO_KEY) as string);
     this.player = new Player(this, this.spawns.player.x, this.spawns.player.y, hero);
@@ -947,6 +965,7 @@ export class GameScene extends Phaser.Scene {
   private refreshRoomHud(): void {
     let label = ROOM_LABELS[this.currentRoom] ?? this.currentRoom;
     if (this.currentRoom === 'boss' && this.bossDefeated) label += ' · 出口已開';
+    label += ` · #${this.runSeed}`;
     this.roomHud?.setText(label);
   }
 
@@ -1094,16 +1113,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Room rects from map properties (roomA / roomC / roomB / roomBoss = "x,y,w,h"). */
   private readRooms(map: Phaser.Tilemaps.Tilemap): Record<RoomId, Rect> {
-    const tw = map.tileWidth || 16;
-    const th = map.tileHeight || 16;
-    const rw = 48 * tw;
-    const rh = 32 * th;
-    const rooms: Record<RoomId, Rect> = {
-      a: { x: 0, y: 0, w: rw, h: rh },
-      c: { x: rw, y: 0, w: rw, h: rh },
-      b: { x: rw, y: rh, w: rw, h: rh },
-      boss: { x: rw * 2, y: 0, w: rw, h: rh },
-    };
+    const found: Partial<Record<RoomId, Rect>> = {};
     const keyFor: Record<string, RoomId> = {
       roomA: 'a',
       roomC: 'c',
@@ -1114,7 +1124,13 @@ export class GameScene extends Phaser.Scene {
       const id = keyFor[p.name];
       if (!id) continue;
       const rect = this.parseRect(String(p.value));
-      if (rect) rooms[id] = rect;
+      if (rect) found[id] = rect;
+    }
+    const rooms = {} as Record<RoomId, Rect>;
+    for (const id of ROOM_ORDER) {
+      const rect = found[id];
+      if (!rect) throw new Error(`Dungeon map is missing room rect ${id}`);
+      rooms[id] = rect;
     }
     return rooms;
   }
@@ -1147,56 +1163,14 @@ export class GameScene extends Phaser.Scene {
     return this.roomAt(at.x, at.y) ?? 'a';
   }
 
-  private readSpawns(
-    map: Phaser.Tilemaps.Tilemap,
-    rooms: Record<RoomId, Rect>,
-  ): GameScene['spawns'] {
-    const tile = (tx: number, ty: number): SpawnPoint => ({
-      x: tx * (map.tileWidth || 16) + (map.tileWidth || 16) / 2,
-      y: ty * (map.tileHeight || 16) + (map.tileHeight || 16) / 2,
-    });
-    const doorAt = (tx: number, ty: number, wTiles: number, hTiles: number, target: string, room: RoomId): DoorSpawn => ({
-      x: tx * (map.tileWidth || 16),
-      y: ty * (map.tileHeight || 16),
-      w: wTiles * (map.tileWidth || 16),
-      h: hTiles * (map.tileHeight || 16),
-      target,
-      room,
-    });
-
-    // Mirrors tools/make_dungeon_map.py so a missing object layer still has a path.
-    const fallback: GameScene['spawns'] = {
-      player: tile(10, 16),
-      points: {
-        spawn_a: tile(40, 15),
-        spawn_c_west: tile(56, 15),
-        spawn_c_east: tile(86, 15),
-        spawn_c_south: tile(70, 21),
-        spawn_b: tile(70, 42),
-        spawn_boss: tile(105, 15),
-      },
-      enemies: [
-        { ...tile(18, 26), room: 'a', hp: 2 },
-        { ...tile(62, 7), room: 'c', hp: 3 },
-        { ...tile(78, 8), room: 'c', hp: 3 },
-        { ...tile(56, 28), room: 'c', hp: 3 },
-        { ...tile(88, 58), room: 'b', hp: 2 },
-      ],
-      boss: tile(126, 18),
-      chest: tile(80, 50),
-      exit: tile(116, 5),
-      doors: [
-        doorAt(45, 14, 3, 4, 'spawn_c_west', 'c'),
-        doorAt(48, 14, 3, 4, 'spawn_a', 'a'),
-        doorAt(92, 14, 3, 4, 'spawn_boss', 'boss'),
-        doorAt(96, 14, 3, 4, 'spawn_c_east', 'c'),
-        doorAt(69, 28, 3, 4, 'spawn_b', 'b'),
-        doorAt(69, 32, 3, 3, 'spawn_c_south', 'c'),
-      ],
-    };
-
+  /**
+   * Spawns and doors come only from the generated object layer.
+   * Fixed tile coordinates would drop the player into the wrong room
+   * once the layout is no longer the old A|C|Boss row.
+   */
+  private readSpawns(map: Phaser.Tilemaps.Tilemap): GameScene['spawns'] {
     const layer = map.getObjectLayer('spawns');
-    if (!layer) return fallback;
+    if (!layer) throw new Error('Dungeon map is missing the spawns layer');
 
     const center = (o: Phaser.Types.Tilemaps.TiledObject): SpawnPoint => ({
       x: (o.x ?? 0) + (o.width ?? 0) / 2,
@@ -1207,6 +1181,9 @@ export class GameScene extends Phaser.Scene {
     const bossObj = layer.objects.find((o) => o.type === 'boss' || o.name === 'boss');
     const chestObj = layer.objects.find((o) => o.type === 'chest' || o.name === 'chest');
     const exitObj = layer.objects.find((o) => o.type === 'exit' || o.name === 'exit');
+    if (!playerObj || !bossObj || !chestObj || !exitObj) {
+      throw new Error('Dungeon map is missing player, boss, chest, or exit');
+    }
 
     const points: Record<string, SpawnPoint> = {};
     for (const o of layer.objects) {
@@ -1214,9 +1191,6 @@ export class GameScene extends Phaser.Scene {
       const isSpawn = o.type === 'spawn' || name.startsWith('spawn_');
       if (!isSpawn || name === 'player' || !name) continue;
       points[name] = center(o);
-    }
-    for (const [name, point] of Object.entries(fallback.points)) {
-      if (!points[name]) points[name] = point;
     }
 
     const enemies: EnemySpawn[] = [];
@@ -1232,13 +1206,16 @@ export class GameScene extends Phaser.Scene {
       const hp = this.propNumber(o, 'hp') ?? PASTE_HP[room];
       enemies.push({ ...at, room, hp });
     }
+    if (enemies.length === 0) throw new Error('Dungeon map has no enemies');
 
     const doors: DoorSpawn[] = [];
     for (const o of layer.objects) {
       if (!(o.type === 'door' || (o.name?.startsWith('door_') ?? false))) continue;
       const room = this.propString(o, 'room');
       const target = this.propString(o, 'target');
-      if (!isRoomId(room) || !target) continue;
+      if (!isRoomId(room) || !target || !points[target]) {
+        throw new Error(`Door ${o.name ?? ''} is missing a destination`);
+      }
       doors.push({
         x: o.x ?? 0,
         y: o.y ?? 0,
@@ -1248,21 +1225,16 @@ export class GameScene extends Phaser.Scene {
         room,
       });
     }
-
-    const bossRoom = rooms.boss;
-    const exitFallback: SpawnPoint = {
-      x: bossRoom.x + bossRoom.w * 0.45,
-      y: bossRoom.y + 5 * (map.tileHeight || 16),
-    };
+    if (doors.length === 0) throw new Error('Dungeon map has no doors');
 
     return {
-      player: playerObj ? center(playerObj) : fallback.player,
+      player: center(playerObj),
       points,
       enemies,
-      boss: bossObj ? center(bossObj) : fallback.boss,
-      chest: chestObj ? center(chestObj) : fallback.chest,
-      exit: exitObj ? center(exitObj) : exitFallback,
-      doors: doors.length ? doors : fallback.doors,
+      boss: center(bossObj),
+      chest: center(chestObj),
+      exit: center(exitObj),
+      doors,
     };
   }
 

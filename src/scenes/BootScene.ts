@@ -3,7 +3,8 @@ import { GameAudio } from '../audio/GameAudio';
 import { HERO_ORDER, HEROES } from '../data/players';
 
 /**
- * Loads atlases + map + audio; registers anims; goes to character select.
+ * Loads atlases + dungeon tiles + audio; registers anims; goes to character select.
+ * The room layout is built per run in GameScene (see MapGenerator).
  *
  * Credits (fan learning only):
  * - Eric / Prim / Raizen / Paste: Claire Starsword @ The Spriters Resource
@@ -34,7 +35,6 @@ export class BootScene extends Phaser.Scene {
       'assets/generated/gully-atlas.json',
     );
     this.load.image('dungeon-tiles', 'assets/maps/dungeon-tiles.png');
-    this.load.tilemapTiledJSON('dungeon-room', 'assets/maps/dungeon-room.json');
     GameAudio.preload(this);
   }
 
