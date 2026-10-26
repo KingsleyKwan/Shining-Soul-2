@@ -80,9 +80,9 @@ Shown when the device reports touch (`maxTouchPoints`, a coarse pointer, or Phas
 | Control / 控件 | Action / 作用 |
 |----------------|---------------|
 | 浮動方向盤（左半屏任意處撳落 = 原點，再拖動方向；鬆開隱藏歸零） / Floating stick（left half） | Move / 移動 |
-| **ATK**（bottom-right / 右下） | Tap or **hold** to charge / 輕點或**長按**蓄力（同 Space / Z） |
+| **攻擊**（bottom-right / 右下） | Tap or **hold** to charge / 輕點或**長按**蓄力（同 Space / Z） |
 | **技**（above **E** / E 上方） | Active skill / 主動技能（同 **Q**，有冷卻） |
-| **E**（beside ATK / 攻擊鍵旁） | Open chest / 開箱（同鍵盤 E） |
+| **E**（beside 攻擊 / 攻擊鍵旁） | Open chest / 開箱（同鍵盤 E） |
 | **包**（top-right / 右上） | Inventory / equipment / 背包／裝備（同 **I**／**Tab**） |
 | **R**（top-right / 右上） | Restart / 重開 |
 | **☰** | Back to select / 返回選角（同 Esc） |
@@ -192,7 +192,7 @@ Mechanics are decoupled from character data so a future hero is mostly **new dat
 ## Phase 2 — Charge & loot / 第二階段 — 蓄力與掉落
 
 ### Charge attack / 蓄力攻擊
-- Hold **Space / Z / ATK** → stages **1–3** with a charge ring (**cyan → yellow → red**).
+- Hold **Space / Z / 攻擊** → stages **1–3** with a charge ring (**cyan → yellow → red**).
 - Release fires a larger hitbox; damage uses `stats.str` + gear + stage:
   `max(1, floor((str + gearDamage + stage*2) / 2))`.
 - Quick tap (release before stage 1) = normal slash.
@@ -240,7 +240,7 @@ shining-soul-2-web/
     ├── audio/GameAudio.ts
     ├── ai/TilePathfinder.ts  # grid A* + PathFollower
     ├── input/InputState.ts   # keyboard + touch → one frame (incl. Q / 技)
-    ├── ui/TouchControls.ts   # on-screen stick + ATK / 技 / E / 包 / R / ☰
+    ├── ui/TouchControls.ts   # on-screen stick + 攻擊 / 技 / E / 包 / R / ☰
     ├── ui/InventoryPanel.ts  # DOM bag / equipment panel (HK 繁中)
     ├── ui/GameOverDom.ts     # DOM game-over overlay
     ├── ui/StageClearDom.ts   # DOM 關卡清除 overlay

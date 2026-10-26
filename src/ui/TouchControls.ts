@@ -110,7 +110,7 @@ export class TouchControls {
     this.thumb.setVisible(false);
     this.thumb.disableInteractive();
 
-    this.makeButton(w - 48, h - 58, 30, 'ATK', 11, 0xb42323, 'attack', 40);
+    this.makeButton(w - 48, h - 58, 30, '攻擊', 12, 0xb42323, 'attack', 46);
     this.makeButton(w - 112, h - 42, 24, 'E', 14, 0xc4922a, 'interact', 36);
     // Above E so it does not cover ATK / E / R / ☰.
     this.makeButton(w - 112, h - 90, 22, '技', 14, 0x4a3aa8, 'skill', 30);
