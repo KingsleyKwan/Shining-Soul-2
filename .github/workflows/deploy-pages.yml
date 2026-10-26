@@ -28,6 +28,7 @@ jobs:
           python3 tools/extract_eric.py
           python3 tools/extract_prim.py
           python3 tools/extract_raizen.py
+          python3 tools/make_ryle_atlas.py
       - uses: actions/setup-node@v4
         with:
           node-version: 20
