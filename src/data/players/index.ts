@@ -2,13 +2,15 @@ import { playerDataToHeroDef, type HeroDef, type PlayerData } from '../types';
 import { ERIC_DATA } from './eric';
 import { PRIM_DATA } from './prim';
 import { RAIZEN_DATA } from './raizen';
+import { RYLE_DATA } from './ryle';
 
-export type HeroId = 'eric' | 'prim' | 'raizen';
+export type HeroId = 'eric' | 'prim' | 'raizen' | 'ryle';
 
 export const PLAYER_DATA: Record<HeroId, PlayerData> = {
   eric: ERIC_DATA,
   prim: PRIM_DATA,
   raizen: RAIZEN_DATA,
+  ryle: RYLE_DATA,
 };
 
 /** Flat HeroDef registry (SelectScene / BootScene / GameScene). */
@@ -16,9 +18,10 @@ export const HEROES: Record<HeroId, HeroDef> = {
   eric: playerDataToHeroDef(ERIC_DATA),
   prim: playerDataToHeroDef(PRIM_DATA),
   raizen: playerDataToHeroDef(RAIZEN_DATA),
+  ryle: playerDataToHeroDef(RYLE_DATA),
 };
 
-export const HERO_ORDER: HeroId[] = ['eric', 'prim', 'raizen'];
+export const HERO_ORDER: HeroId[] = ['eric', 'prim', 'raizen', 'ryle'];
 
 export const SELECTED_HERO_KEY = 'selectedHero';
 
@@ -33,4 +36,4 @@ export function getHero(id: HeroId | string | undefined): HeroDef {
 }
 
 export type { PlayerData, HeroDef };
-export { ERIC_DATA, PRIM_DATA, RAIZEN_DATA };
+export { ERIC_DATA, PRIM_DATA, RAIZEN_DATA, RYLE_DATA };

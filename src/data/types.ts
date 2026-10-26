@@ -34,7 +34,7 @@ export type AnimSetKeys = {
   deathLastFrame: string;
 };
 
-export type ActiveSkillKind = 'dash_smash' | 'arc_bolt' | 'shadow_flurry';
+export type ActiveSkillKind = 'dash_smash' | 'arc_bolt' | 'shadow_flurry' | 'rain_of_arrows';
 
 export type ActiveSkillDef = {
   id: string;
@@ -53,6 +53,11 @@ export type PlayerData = {
   anim: AnimSetKeys;
   /** Primary active skill (Q / SKILL). Stub slots can be added later. */
   activeSkill: ActiveSkillDef;
+  /**
+   * Basic attack shape. Omit or `'melee'` for a contact slash.
+   * `'bow'` fires ranged arrows on release (no melee hitbox).
+   */
+  basicAttack?: 'melee' | 'bow';
 };
 
 /**

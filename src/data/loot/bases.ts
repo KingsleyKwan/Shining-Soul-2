@@ -29,6 +29,15 @@ export const ITEM_BASES: ItemBaseDef[] = [
     weight: 10,
   },
   {
+    id: 'hunter_bow',
+    slot: 'weapon',
+    weaponType: 'bow',
+    nameEn: 'Hunter Bow',
+    nameZh: '獵弓',
+    mods: { damage: 1, speed: 5 },
+    weight: 10,
+  },
+  {
     id: 'leather_vest',
     slot: 'armor',
     nameEn: 'Leather Vest',
