@@ -408,7 +408,7 @@ export class PlayerBase extends CharacterBase {
     this.skillCooldownUntil = this.scene.time.now + this.playerData.activeSkill.cooldownMs;
     this.animCtl.setFacing(this.facing);
     this.animCtl.playAttack();
-    GameAudio.get(this.scene)?.slash();
+    GameAudio.get(this.scene)?.skill();
   }
 
   private startDashSmash(): void {

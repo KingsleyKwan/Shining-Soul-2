@@ -3,7 +3,7 @@ import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
 import { Boss } from '../entities/Boss';
 import { TilePathfinder } from '../ai/TilePathfinder';
-import { GameAudio, AUDIO_REGISTRY_KEY } from '../audio/GameAudio';
+import { GameAudio } from '../audio/GameAudio';
 import { getHero, SELECTED_HERO_KEY } from '../data/players';
 import { formatItemToast, rollItem } from '../data/loot/roll';
 import { HitFeedback } from '../systems/HitFeedback';
@@ -161,10 +161,11 @@ export class GameScene extends Phaser.Scene {
     walls.setCollisionByExclusion([-1]);
     this.pathfinder = new TilePathfinder(walls);
 
-    this.audio = new GameAudio(this);
-    this.registry.set(AUDIO_REGISTRY_KEY, this.audio);
+    // Shared AudioManager — survives restart; SHUTDOWN clears BGM so loops never stack.
+    this.audio = GameAudio.attach(this);
     this.hitFeedback = new HitFeedback(this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.audio?.shutdown();
       this.hitFeedback.destroy();
     });
 
