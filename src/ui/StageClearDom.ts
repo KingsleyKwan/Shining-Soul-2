@@ -9,6 +9,10 @@ export type StageClearActions = {
   select: () => void;
   /** Dismiss the panel and keep walking the cleared stage. */
   continue: () => void;
+  /** Jump into the newly unlocked next stage when available. */
+  nextStage?: () => void;
+  /** Button label for nextStage (default 下一關). */
+  nextStageLabel?: string;
 };
 
 const ROOT_ID = 'ss2-stageclear-overlay';
@@ -18,11 +22,12 @@ let actions: StageClearActions | null = null;
 let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 let busy = false;
 
-function styleButton(kind: 'primary' | 'secondary' | 'continue'): string {
+function styleButton(kind: 'primary' | 'secondary' | 'continue' | 'next'): string {
   const palette = {
     primary: ['#2a6a3a', '#6dffa0'],
     secondary: ['#3a3a4a', '#aaaacc'],
     continue: ['#3a4a28', '#ffe066'],
+    next: ['#2a4a6a', '#66d0ff'],
   } as const;
   const [bg, border] = palette[kind];
   return [
@@ -44,6 +49,9 @@ export function showStageClearDom(next: StageClearActions): void {
   hideStageClearDom();
   busy = false;
   actions = next;
+
+  const hasNext = typeof next.nextStage === 'function';
+  const nextLabel = next.nextStageLabel?.trim() || '下一關';
 
   const el = document.createElement('div');
   el.id = ROOT_ID;
@@ -70,15 +78,41 @@ export function showStageClearDom(next: StageClearActions): void {
   title.style.cssText = 'font-size:28px;color:#ffe066;margin-bottom:8px;letter-spacing:2px;';
 
   const sub = document.createElement('div');
-  sub.textContent = 'Boss 已擊破 · 恭喜通關';
+  sub.textContent = hasNext
+    ? 'Boss 已擊破 · 下一關已解鎖'
+    : 'Boss 已擊破 · 恭喜通關';
   sub.style.cssText = 'font-size:14px;color:#fff6d0;margin-bottom:8px;';
 
   const hint = document.createElement('div');
-  hint.textContent = 'R 重新開始 · Esc 選角';
+  hint.textContent = hasNext
+    ? 'N 下一關 · R 重新開始 · Esc 選角'
+    : 'R 重新開始 · Esc 選角';
   hint.style.cssText = 'font-size:12px;color:#c8d0d8;margin-bottom:20px;';
 
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:center;gap:8px;';
+
+  const fire = (kind: 'restart' | 'select' | 'continue' | 'next') => (ev: Event) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (busy || !actions) return;
+    busy = true;
+    if (kind === 'restart') actions.restart();
+    else if (kind === 'select') actions.select();
+    else if (kind === 'next') actions.nextStage?.();
+    else actions.continue();
+  };
+
+  if (hasNext) {
+    const btnNext = document.createElement('button');
+    btnNext.type = 'button';
+    btnNext.textContent = nextLabel;
+    btnNext.setAttribute('data-action', 'next');
+    btnNext.setAttribute('data-testid', 'stageclear-next');
+    btnNext.style.cssText = styleButton('next');
+    btnNext.addEventListener('click', fire('next'));
+    row.appendChild(btnNext);
+  }
 
   const btnRestart = document.createElement('button');
   btnRestart.type = 'button';
@@ -100,16 +134,6 @@ export function showStageClearDom(next: StageClearActions): void {
   btnContinue.setAttribute('data-action', 'continue');
   btnContinue.setAttribute('data-testid', 'stageclear-continue');
   btnContinue.style.cssText = styleButton('continue');
-
-  const fire = (kind: 'restart' | 'select' | 'continue') => (ev: Event) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    if (busy || !actions) return;
-    busy = true;
-    if (kind === 'restart') actions.restart();
-    else if (kind === 'select') actions.select();
-    else actions.continue();
-  };
 
   btnRestart.addEventListener('click', fire('restart'));
   btnSelect.addEventListener('click', fire('select'));
@@ -135,7 +159,12 @@ export function showStageClearDom(next: StageClearActions): void {
 
   keyHandler = (e: KeyboardEvent) => {
     if (!actions || busy) return;
-    if (e.key === 'r' || e.key === 'R') {
+    if (hasNext && (e.key === 'n' || e.key === 'N')) {
+      e.preventDefault();
+      e.stopPropagation();
+      busy = true;
+      actions.nextStage?.();
+    } else if (e.key === 'r' || e.key === 'R') {
       e.preventDefault();
       e.stopPropagation();
       busy = true;
@@ -155,6 +184,7 @@ export function showStageClearDom(next: StageClearActions): void {
     restart: () => actions?.restart(),
     select: () => actions?.select(),
     continue: () => actions?.continue(),
+    nextStage: () => actions?.nextStage?.(),
     hide: hideStageClearDom,
   };
 }

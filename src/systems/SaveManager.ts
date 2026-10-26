@@ -1,8 +1,13 @@
 import { HEROES, type HeroId } from '../data/players';
+import {
+  defaultUnlockedStages,
+  isStageId,
+  type StageId,
+} from '../data/stages';
 import type { RolledItem } from '../data/loot/types';
 import { Inventory, type EquipSlot } from './Inventory';
 
-/** localStorage key for the v1 profile (hero, gold, bag, equipped gear). */
+/** localStorage key for the v1 profile (hero, gold, bag, equipped gear, unlocks). */
 export const SAVE_STORAGE_KEY = 'shining-soul-2-save-v1';
 
 export const SAVE_VERSION = 1;
@@ -13,6 +18,8 @@ export type SaveData = {
   gold: number;
   bag: RolledItem[];
   equipped: Partial<Record<EquipSlot, RolledItem>>;
+  /** Permanently unlocked stage ids. Always includes 1. Missing on old saves → [1]. */
+  unlockedStages: StageId[];
 };
 
 export function isHeroId(value: unknown): value is HeroId {
@@ -21,7 +28,7 @@ export function isHeroId(value: unknown): value is HeroId {
 
 /**
  * Read the profile. Missing, unreadable, unknown-version, or invalid-hero
- * saves return null. Bad items are dropped; missing gold / bag / gear default.
+ * saves return null. Bad items are dropped; missing gold / bag / gear / unlocks default.
  */
 export function load(): SaveData | null {
   try {
@@ -61,6 +68,28 @@ export function hasSave(): boolean {
   return load() !== null;
 }
 
+export function getUnlockedStages(data: SaveData | null | undefined): StageId[] {
+  if (!data) return defaultUnlockedStages();
+  return sanitizeUnlocked(data.unlockedStages);
+}
+
+export function isStageUnlocked(
+  data: SaveData | null | undefined,
+  id: StageId,
+): boolean {
+  return getUnlockedStages(data).includes(id);
+}
+
+/** Return a copy with `stageId` permanently unlocked (idempotent). */
+export function unlockStage(data: SaveData, stageId: StageId): SaveData {
+  const unlocked = new Set(getUnlockedStages(data));
+  unlocked.add(stageId);
+  return {
+    ...data,
+    unlockedStages: sanitizeUnlocked([...unlocked]),
+  };
+}
+
 function getStorage(): Storage | null {
   try {
     if (typeof localStorage === 'undefined') return null;
@@ -73,6 +102,23 @@ function getStorage(): Storage | null {
 function sanitizeGold(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return 0;
   return Math.floor(value);
+}
+
+function sanitizeUnlocked(value: unknown): StageId[] {
+  const out = new Set<StageId>([1]);
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (isStageId(entry)) {
+        out.add(entry);
+        continue;
+      }
+      if (typeof entry === 'string' || typeof entry === 'number') {
+        const n = typeof entry === 'number' ? entry : Number(entry);
+        if (isStageId(n)) out.add(n);
+      }
+    }
+  }
+  return [...out].sort((a, b) => a - b);
 }
 
 function parseSave(value: unknown): SaveData | null {
@@ -89,5 +135,6 @@ function parseSave(value: unknown): SaveData | null {
     gold: sanitizeGold(raw.gold),
     bag: snap.bag,
     equipped: snap.equipped,
+    unlockedStages: sanitizeUnlocked(raw.unlockedStages),
   };
 }

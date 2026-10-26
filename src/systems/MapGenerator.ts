@@ -13,6 +13,16 @@
 
 export type RoomId = 'a' | 'c' | 'b' | 'boss';
 
+export type DungeonOptions = {
+  /** Multiplier on Paste HP (ceil). Default 1. */
+  pasteHpScale?: number;
+  /**
+   * Extra Pastes per room that already has Pastes. Placement tries base+bonus
+   * first, then falls back to the base count so layouts stay clearable.
+   */
+  pasteCountBonus?: number;
+};
+
 export type GeneratedDungeon = {
   seed: number;
   tiled: object;
@@ -148,15 +158,16 @@ type Attempt =
   | { ok: true; dungeon: GeneratedDungeon }
   | { ok: false; error: string };
 
-export function generateDungeon(seed?: number): GeneratedDungeon {
+export function generateDungeon(seed?: number, options?: DungeonOptions): GeneratedDungeon {
   const base =
     seed === undefined || !Number.isFinite(seed)
       ? Math.floor(Math.random() * 0x7fffffff)
       : seed >>> 0;
+  const opts = normalizeOptions(options);
   let lastError = 'unknown';
   for (let i = 0; i < MAX_TRIES; i++) {
     const next = (base + i) >>> 0;
-    const attempt = tryGenerate(next);
+    const attempt = tryGenerate(next, opts);
     if (attempt.ok) return attempt.dungeon;
     lastError = attempt.error;
   }
@@ -165,7 +176,26 @@ export function generateDungeon(seed?: number): GeneratedDungeon {
   );
 }
 
-function tryGenerate(seed: number): Attempt {
+type NormalizedOptions = { pasteHpScale: number; pasteCountBonus: number };
+
+function normalizeOptions(options?: DungeonOptions): NormalizedOptions {
+  const scale =
+    options?.pasteHpScale !== undefined && Number.isFinite(options.pasteHpScale) && options.pasteHpScale > 0
+      ? options.pasteHpScale
+      : 1;
+  const bonusRaw = options?.pasteCountBonus;
+  const bonus =
+    typeof bonusRaw === 'number' && Number.isFinite(bonusRaw) && bonusRaw > 0
+      ? Math.floor(bonusRaw)
+      : 0;
+  return { pasteHpScale: scale, pasteCountBonus: bonus };
+}
+
+function scaledPasteHp(room: RoomId, scale: number): number {
+  return Math.max(1, Math.ceil(PASTE_HP[room] * scale));
+}
+
+function tryGenerate(seed: number, opts: NormalizedOptions): Attempt {
   const rng = mulberry32(seed);
   const cells = layoutRooms(rng);
   if (!cells) return { ok: false, error: 'could not place rooms' };
@@ -271,10 +301,15 @@ function tryGenerate(seed: number): Attempt {
   });
 
   for (const id of ROOM_IDS) {
-    const want = PASTE_COUNT[id];
-    if (want <= 0) continue;
-    const placed = placePastes(rng, id, cells[id], want, objects, walls, mapW);
-    if (placed.length < want) {
+    const baseWant = PASTE_COUNT[id];
+    if (baseWant <= 0) continue;
+    const hp = scaledPasteHp(id, opts.pasteHpScale);
+    const wantBonus = baseWant + opts.pasteCountBonus;
+    let placed = placePastes(rng, id, cells[id], wantBonus, objects, walls, mapW, hp);
+    if (placed.length < wantBonus && opts.pasteCountBonus > 0) {
+      placed = placePastes(rng, id, cells[id], baseWant, objects, walls, mapW, hp);
+    }
+    if (placed.length < baseWant) {
       return { ok: false, error: `not enough safe tiles for ${id} pastes` };
     }
     objects.push(...placed);
@@ -487,6 +522,7 @@ function placePastes(
   existing: Spawn[],
   walls: number[],
   mapW: number,
+  hp: number,
 ): Spawn[] {
   const ox = cell.x * ROOM_W;
   const oy = cell.y * ROOM_H;
@@ -518,7 +554,7 @@ function placePastes(
           ty: tile.ty,
           w: 1,
           h: 1,
-          hp: PASTE_HP[room],
+          hp,
         }));
       }
     }
