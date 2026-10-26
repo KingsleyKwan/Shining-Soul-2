@@ -56,11 +56,28 @@ export function tidyToastSeparators(msg: string): string {
     .trim();
 }
 
-export function showLootToastDom(msg: string): void {
+export type LootToastOptions = {
+  /** Override toast text/border color (rarity name color). */
+  color?: string;
+};
+
+const DEFAULT_TOAST_COLOR = '#ffe066';
+const DEFAULT_TOAST_BORDER = 'rgba(255,224,102,0.55)';
+
+export function showLootToastDom(msg: string, opts?: LootToastOptions): void {
   const text = tidyToastSeparators(msg);
   if (!text) return;
   const el = ensureRoot();
   el.textContent = text;
+
+  const color = opts?.color?.trim() || DEFAULT_TOAST_COLOR;
+  el.style.color = color;
+  // Soft border matching the name color when rarity-tinted.
+  if (opts?.color?.trim()) {
+    el.style.borderColor = color;
+  } else {
+    el.style.borderColor = DEFAULT_TOAST_BORDER;
+  }
 
   if (hideTimer) clearTimeout(hideTimer);
   if (fadeTimer) clearTimeout(fadeTimer);

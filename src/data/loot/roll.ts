@@ -1,8 +1,10 @@
 import { ITEM_BASES } from './bases';
 import { PREFIXES, SUFFIXES } from './affixes';
 import {
+  amplifyMods,
   emptyMods,
   mergeMods,
+  rarityTagZh,
   type AffixDef,
   type ItemBaseDef,
   type ItemRarity,
@@ -14,6 +16,8 @@ export type RollOptions = {
   allowedWeaponTypes?: string[];
   /** Force weapon-only rolls (chests). */
   preferWeapon?: boolean;
+  /** Slightly better rarity weights (chests). */
+  betterRarity?: boolean;
 };
 
 let uidSeq = 0;
@@ -28,11 +32,22 @@ function pickWeighted<T extends { weight: number }>(list: T[], rng: () => number
   return list[list.length - 1]!;
 }
 
-function rollRarity(rng: () => number): ItemRarity {
+/**
+ * Normal ~50/32/13/5  普／優／稀／傳
+ * Chest (better) ~35/35/20/10
+ */
+function rollRarity(rng: () => number, better?: boolean): ItemRarity {
   const r = rng();
-  if (r < 0.55) return 'common';
-  if (r < 0.9) return 'magic';
-  return 'rare';
+  if (better) {
+    if (r < 0.35) return 'common';
+    if (r < 0.7) return 'magic';
+    if (r < 0.9) return 'rare';
+    return 'legendary';
+  }
+  if (r < 0.5) return 'common';
+  if (r < 0.82) return 'magic';
+  if (r < 0.95) return 'rare';
+  return 'legendary';
 }
 
 function filterBases(opts?: RollOptions): ItemBaseDef[] {
@@ -52,24 +67,28 @@ function filterBases(opts?: RollOptions): ItemBaseDef[] {
 }
 
 /**
- * Roll a Diablo-like item: common = base only; magic = prefix OR suffix;
- * rare = prefix AND suffix.
+ * Roll a Diablo-like item:
+ * common = base only; magic = prefix OR suffix; rare = both;
+ * legendary = both + ~1.5× mod amplify.
  */
 export function rollItem(rng: () => number = Math.random, opts?: RollOptions): RolledItem {
   const base = pickWeighted(filterBases(opts), rng);
-  const rarity = rollRarity(rng);
+  const rarity = rollRarity(rng, opts?.betterRarity);
 
   let prefix: AffixDef | undefined;
   let suffix: AffixDef | undefined;
   if (rarity === 'magic') {
     if (rng() < 0.5) prefix = pickWeighted(PREFIXES, rng);
     else suffix = pickWeighted(SUFFIXES, rng);
-  } else if (rarity === 'rare') {
+  } else if (rarity === 'rare' || rarity === 'legendary') {
     prefix = pickWeighted(PREFIXES, rng);
     suffix = pickWeighted(SUFFIXES, rng);
   }
 
-  const mods = mergeMods(base.mods, prefix?.mods, suffix?.mods);
+  let mods = mergeMods(base.mods, prefix?.mods, suffix?.mods);
+  if (rarity === 'legendary') {
+    mods = amplifyMods(mods, 1.5);
+  }
 
   const nameEn = [prefix?.nameEn, base.nameEn, suffix?.nameEn].filter(Boolean).join(' ');
   // 香港繁體：「鋒利鐵劍」／「鐵劍之力量」／「鋒利鐵劍之力量」
@@ -95,8 +114,6 @@ export function rollItem(rng: () => number = Math.random, opts?: RollOptions): R
 }
 
 export function formatItemToast(item: RolledItem): string {
-  // HK 繁中 only — avoid "EN / ZH" slash that stacked with toast " · " separators.
-  const tag =
-    item.rarity === 'rare' ? '★ ' : item.rarity === 'magic' ? '◆ ' : '';
-  return `${tag}${item.nameZh}`;
+  // HK 繁中 only — 【普】／【優】／【稀】／【傳】 + name.
+  return `${rarityTagZh(item.rarity)}${item.nameZh}`;
 }

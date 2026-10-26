@@ -190,7 +190,7 @@ function fmtSigned(n: number): string {
   return String(n);
 }
 
-const RARITIES = new Set<ItemRarity>(['common', 'magic', 'rare']);
+const RARITIES = new Set<ItemRarity>(['common', 'magic', 'rare', 'legendary']);
 
 function finiteMod(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
