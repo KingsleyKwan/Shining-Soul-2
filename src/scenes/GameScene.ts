@@ -216,8 +216,8 @@ export class GameScene extends Phaser.Scene {
     this.inputState = new InputState(this);
 
     const help = this.touch.enabled
-      ? 'Stick · hold ATK · 技 · E · 包 · R · ☰'
-      : 'WASD · hold Space/Z · Q · E 寶箱 · I/Tab 包 · M · R · Esc';
+      ? '浮動搖桿 · 長按攻擊 · 技 · E · 包 · R · ☰'
+      : 'WASD · 長按 Space/Z · Q · E 寶箱 · I/Tab 包 · M · R · Esc';
 
     this.add
       .text(8, 8, help, {
@@ -347,7 +347,7 @@ export class GameScene extends Phaser.Scene {
 
   private refreshMuteHud(): void {
     const muted = this.audio?.isMuted() ?? false;
-    this.muteHud?.setText(muted ? 'Muted (M)' : 'Audio on (M)');
+    this.muteHud?.setText(muted ? '靜音 (M)' : '音效開 (M)');
     this.muteHud?.setColor(muted ? '#ff8888' : '#aaaacc');
   }
 
@@ -870,7 +870,7 @@ export class GameScene extends Phaser.Scene {
     const hud = this.hpHud;
     if (!hud || !hud.active || !hud.scene) return;
     try {
-      hud.setText(`HP ${hp}/${max}`);
+      hud.setText(`生命 ${hp}/${max}`);
       // Avoid setColor during fragile WebGL/text-canvas frames — use tint instead.
       hud.setTint(hp <= 1 ? 0xff6666 : hp <= 2 ? 0xffcc66 : 0xffd0d0);
     } catch (err) {
