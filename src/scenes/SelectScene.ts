@@ -194,7 +194,7 @@ export class SelectScene extends Phaser.Scene {
     container.on('pointerdown', () => onClick());
   }
 
-  /** Keep gold and gear; remember the highlighted hero. */
+  /** Keep gold, gear, and unlocks; remember the highlighted hero → stage select. */
   private confirm(): void {
     this.registry.set(SELECTED_HERO_KEY, this.selected);
     const existing = SaveManager.load();
@@ -204,14 +204,15 @@ export class SelectScene extends Phaser.Scene {
       gold: existing?.gold ?? 0,
       bag: existing?.bag ?? [],
       equipped: existing?.equipped ?? {},
+      unlockedStages: SaveManager.getUnlockedStages(existing),
     });
-    this.scene.start('GameScene');
+    this.scene.start('StageSelectScene');
   }
 
-  /** Drop the profile and start the highlighted hero at 0 gold. */
+  /** Drop the profile and start the highlighted hero at 0 gold → stage select. */
   private startNewGame(): void {
     SaveManager.clear();
     this.registry.set(SELECTED_HERO_KEY, this.selected);
-    this.scene.start('GameScene');
+    this.scene.start('StageSelectScene');
   }
 }

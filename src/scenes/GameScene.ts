@@ -5,6 +5,13 @@ import { Boss } from '../entities/Boss';
 import { TilePathfinder } from '../ai/TilePathfinder';
 import { GameAudio } from '../audio/GameAudio';
 import { getHero, SELECTED_HERO_KEY } from '../data/players';
+import {
+  SELECTED_STAGE_KEY,
+  coerceStageId,
+  getStage,
+  nextStageId,
+  type StageId,
+} from '../data/stages';
 import { formatItemToast, rollItem } from '../data/loot/roll';
 import { RARITY_COLOR, rarityTagZh } from '../data/loot/types';
 import { HitFeedback } from '../systems/HitFeedback';
@@ -110,6 +117,8 @@ export class GameScene extends Phaser.Scene {
   private currentRoom: RoomId = 'a';
   /** Seed of the dungeon generated for this run. Shown on the room HUD. */
   private runSeed = 0;
+  /** Stage chosen on StageSelectScene (default 1). */
+  private runStage: StageId = 1;
   private rooms!: Record<RoomId, Rect>;
   private pathfinder!: TilePathfinder;
   private audio!: GameAudio;
@@ -155,7 +164,10 @@ export class GameScene extends Phaser.Scene {
     this.leaving = false;
     this.loadPersistedState();
 
-    const generated = generateDungeon(rollDungeonSeed());
+    this.runStage = coerceStageId(this.registry.get(SELECTED_STAGE_KEY));
+    this.registry.set(SELECTED_STAGE_KEY, this.runStage);
+    const stageDef = getStage(this.runStage);
+    const generated = generateDungeon(rollDungeonSeed(), stageDef.mapOptions);
     this.runSeed = generated.seed;
     const mapKey = 'dungeon-run';
     this.cache.tilemap.remove(mapKey);
@@ -414,12 +426,14 @@ export class GameScene extends Phaser.Scene {
       const current = this.registry.get(SELECTED_HERO_KEY);
       const heroId = SaveManager.isHeroId(current) ? current : 'eric';
       const snap = this.inventory.toJSON();
+      const existing = SaveManager.load();
       SaveManager.save({
         version: 1,
         heroId,
         gold: this.gold,
         bag: snap.bag,
         equipped: snap.equipped,
+        unlockedStages: SaveManager.getUnlockedStages(existing),
       });
     } catch (err) {
       console.warn('[SS2] persistSave skipped', err);
@@ -518,6 +532,7 @@ export class GameScene extends Phaser.Scene {
 
     const game = this.game;
     const hero = this.registry.get(SELECTED_HERO_KEY);
+    const stage = this.registry.get(SELECTED_STAGE_KEY) ?? this.runStage;
 
     try {
       this.physics.world.resume();
@@ -527,6 +542,7 @@ export class GameScene extends Phaser.Scene {
 
     setTimeout(() => {
       if (hero !== undefined) game.registry.set(SELECTED_HERO_KEY, hero);
+      if (stage !== undefined) game.registry.set(SELECTED_STAGE_KEY, stage);
 
       if (mode === 'select') {
         try {
@@ -567,6 +583,7 @@ export class GameScene extends Phaser.Scene {
         setTimeout(() => {
           try {
             if (hero !== undefined) game.registry.set(SELECTED_HERO_KEY, hero);
+            if (stage !== undefined) game.registry.set(SELECTED_STAGE_KEY, stage);
             game.scene.start('GameScene');
           } catch (err) {
             console.error('[SS2] force start failed', err);
@@ -975,7 +992,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshRoomHud(): void {
-    let label = ROOM_LABELS[this.currentRoom] ?? this.currentRoom;
+    const stageName = getStage(this.runStage).shortName;
+    let label = `${stageName} · ${ROOM_LABELS[this.currentRoom] ?? this.currentRoom}`;
     if (this.currentRoom === 'boss' && this.bossDefeated) label += ' · 出口已開';
     label += ` · #${this.runSeed}`;
     this.roomHud?.setText(label);
@@ -1041,11 +1059,51 @@ export class GameScene extends Phaser.Scene {
     } catch {
       /* ignore */
     }
-    showStageClearDom({
+
+    // Unlock the next stage immediately and persist before the panel shows.
+    const nxt = nextStageId(this.runStage);
+    if (nxt !== null) {
+      this.unlockAndPersist(nxt);
+    }
+
+    const actions: Parameters<typeof showStageClearDom>[0] = {
       restart: () => this.restartRun(),
       select: () => this.backToSelect(),
       continue: () => this.dismissStageClear(),
-    });
+    };
+    if (nxt !== null) {
+      const nextName = getStage(nxt).nameZh;
+      actions.nextStage = () => this.goNextStage(nxt);
+      actions.nextStageLabel = `下一關 · ${nextName}`;
+    }
+    showStageClearDom(actions);
+  }
+
+  /** Merge unlock into the current profile and write localStorage now. */
+  private unlockAndPersist(stageId: StageId): void {
+    try {
+      const current = this.registry.get(SELECTED_HERO_KEY);
+      const heroId = SaveManager.isHeroId(current) ? current : 'eric';
+      const snap = this.inventory.toJSON();
+      const existing = SaveManager.load();
+      const base = {
+        version: 1 as const,
+        heroId,
+        gold: this.gold,
+        bag: snap.bag,
+        equipped: snap.equipped,
+        unlockedStages: SaveManager.getUnlockedStages(existing),
+      };
+      SaveManager.save(SaveManager.unlockStage(base, stageId));
+    } catch (err) {
+      console.warn('[SS2] unlockAndPersist skipped', err);
+    }
+  }
+
+  /** 下一關 — keep hero/gold/gear, jump to the unlocked stage. */
+  private goNextStage(stageId: StageId): void {
+    this.registry.set(SELECTED_STAGE_KEY, stageId);
+    this.restartRun();
   }
 
   /** 繼續 — close the panel and let the player walk the cleared stage. */
