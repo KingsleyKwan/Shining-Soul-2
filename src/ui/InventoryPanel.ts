@@ -1,4 +1,8 @@
-import type { RolledItem } from '../data/loot/types';
+import {
+  RARITY_COLOR,
+  rarityTagZh,
+  type RolledItem,
+} from '../data/loot/types';
 import {
   Inventory,
   SLOT_LABEL_ZH,
@@ -366,15 +370,11 @@ function styleActionBtn(bg: string, color: string, large = false): string {
 }
 
 function rarityPrefix(item: RolledItem): string {
-  if (item.rarity === 'rare') return '★';
-  if (item.rarity === 'magic') return '◆';
-  return '';
+  return rarityTagZh(item.rarity);
 }
 
 function rarityColor(item: RolledItem): string {
-  if (item.rarity === 'rare') return '#ffd24a';
-  if (item.rarity === 'magic') return '#88ccff';
-  return '#d8e0e8';
+  return RARITY_COLOR[item.rarity];
 }
 
 function shortMods(item: RolledItem): string {

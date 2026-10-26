@@ -6,6 +6,7 @@ import { TilePathfinder } from '../ai/TilePathfinder';
 import { GameAudio } from '../audio/GameAudio';
 import { getHero, SELECTED_HERO_KEY } from '../data/players';
 import { formatItemToast, rollItem } from '../data/loot/roll';
+import { RARITY_COLOR, rarityTagZh } from '../data/loot/types';
 import { HitFeedback } from '../systems/HitFeedback';
 import { Inventory, type EquipSlot } from '../systems/Inventory';
 import { generateDungeon } from '../systems/MapGenerator';
@@ -694,6 +695,7 @@ export class GameScene extends Phaser.Scene {
     const item = rollItem(Math.random, {
       preferWeapon: true,
       allowedWeaponTypes: this.player.playerData.weapons.allowedTypes,
+      betterRarity: true,
     });
     this.giveItem(item);
 
@@ -702,7 +704,7 @@ export class GameScene extends Phaser.Scene {
     else parts.push('生命已滿');
     parts.push(`+${goldGain} 金幣`);
     parts.push(formatItemToast(item));
-    this.showLootToast(parts.filter(Boolean).join(' · '));
+    this.showLootToast(parts.filter(Boolean).join(' · '), RARITY_COLOR[item.rarity]);
   }
 
   private tryEnemyDrop(x: number, y: number, chance: number): void {
@@ -711,7 +713,7 @@ export class GameScene extends Phaser.Scene {
       allowedWeaponTypes: this.player.playerData.weapons.allowedTypes,
     });
     this.giveItem(item);
-    this.showLootToast(formatItemToast(item));
+    this.showLootToast(formatItemToast(item), RARITY_COLOR[item.rarity]);
     // Brief spark at death position
     const spark = this.add.circle(x, y - 8, 4, 0xffe066, 0.9).setDepth(30);
     this.tweens.add({
@@ -775,7 +777,12 @@ export class GameScene extends Phaser.Scene {
     this.persistSave();
     this.refreshInvHud();
     this.inventoryPanel.refresh(this.inventory);
-    if (before) this.showLootToast(`裝備 ${before.nameZh}`);
+    if (before) {
+      this.showLootToast(
+        `裝備 ${rarityTagZh(before.rarity)}${before.nameZh}`,
+        RARITY_COLOR[before.rarity],
+      );
+    }
   }
 
   private unequipSlot(slot: EquipSlot): void {
@@ -785,16 +792,21 @@ export class GameScene extends Phaser.Scene {
     this.persistSave();
     this.refreshInvHud();
     this.inventoryPanel.refresh(this.inventory);
-    if (prev) this.showLootToast(`卸下 ${prev.nameZh}`);
+    if (prev) {
+      this.showLootToast(
+        `卸下 ${rarityTagZh(prev.rarity)}${prev.nameZh}`,
+        RARITY_COLOR[prev.rarity],
+      );
+    }
   }
 
   private refreshGoldHud(): void {
     this.goldHud?.setText(`金幣 ${this.gold}`);
   }
 
-  private showLootToast(msg: string): void {
+  private showLootToast(msg: string, color?: string): void {
     // DOM toast at bottom-center — clears top hint HUD and inventory overlay.
-    showLootToastDom(msg);
+    showLootToastDom(msg, color ? { color } : undefined);
   }
 
   private setupDoors(): void {
