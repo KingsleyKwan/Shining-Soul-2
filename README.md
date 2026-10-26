@@ -284,9 +284,13 @@ Entry, combat corridor, chest room, boss arena, and an exit portal that opens **
 Panel to equip / unequip / swap gear; soft-pause while open; keyboard + touch.  
 可裝備／卸下／替換；開面板時軟暫停；鍵盤＋觸屏。
 
+### Done — C2 multi-stage select + unlock / 關卡選擇＋解鎖已完成
+
+StageSelect after hero pick; stage 1「遺跡大廳」always open; stage 2「深層迴廊」unlocks permanently on stage-1 clear (`unlockedStages` in save v1). Clear panel offers **下一關** when available.
+
 ### Next ideas / 下一步想法
 1. Compare tooltips / drag-drop polish · 對比提示／拖放  
-2. Stairs / a second stage · 樓梯／第二關  
+2. ~~Stairs / a second stage · 樓梯／第二關~~ → **C2 done**（關卡選擇＋解鎖）  
 3. Distinct Prim / Raizen charge VFX · 職業蓄力特效  
 4. Persist gold / bag across **R** · 跨重開保留金幣／背包  
 5. Wizard = new `data/players/*.ts` + atlas · 新職業資料檔  
