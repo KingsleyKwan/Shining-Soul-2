@@ -6,6 +6,7 @@ import { TilePathfinder } from '../ai/TilePathfinder';
 import { GameAudio, AUDIO_REGISTRY_KEY } from '../audio/GameAudio';
 import { getHero, SELECTED_HERO_KEY } from '../data/players';
 import { formatItemToast, rollItem } from '../data/loot/roll';
+import { HitFeedback } from '../systems/HitFeedback';
 import { Inventory, type EquipSlot } from '../systems/Inventory';
 import { InputState } from '../input/InputState';
 import { TouchControls } from '../ui/TouchControls';
@@ -100,6 +101,7 @@ export class GameScene extends Phaser.Scene {
   private rooms!: Record<RoomId, Rect>;
   private pathfinder!: TilePathfinder;
   private audio!: GameAudio;
+  private hitFeedback!: HitFeedback;
   private muteHud!: Phaser.GameObjects.Text;
   private spawns!: {
     player: SpawnPoint;
@@ -158,6 +160,10 @@ export class GameScene extends Phaser.Scene {
 
     this.audio = new GameAudio(this);
     this.registry.set(AUDIO_REGISTRY_KEY, this.audio);
+    this.hitFeedback = new HitFeedback(this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.hitFeedback.destroy();
+    });
 
     const worldW = map.widthInPixels;
     const worldH = map.heightInPixels;
@@ -1210,8 +1216,11 @@ export class GameScene extends Phaser.Scene {
       hit.add(hostile);
       const dmg = (zone.getData('damage') as number | undefined) ?? this.player.getSlashDamage(0);
       const iframeMs = zone.getData('iframeMs') as number | undefined;
-      if (typeof iframeMs === 'number') hostile.takeDamage(dmg, this.player.x, this.player.y, iframeMs);
-      else hostile.takeDamage(dmg, this.player.x, this.player.y);
+      const landed =
+        typeof iframeMs === 'number'
+          ? hostile.takeDamage(dmg, this.player.x, this.player.y, iframeMs)
+          : hostile.takeDamage(dmg, this.player.x, this.player.y);
+      if (landed) this.hitFeedback.onPlayerLandedHit();
     });
   }
 }
