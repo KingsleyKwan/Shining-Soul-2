@@ -221,11 +221,11 @@ shining-soul-2-web/
 │   ├── make_dungeon_map.py   # tiles + 144×64 four-room JSON
 │   └── gen_placeholder_audio.py
 ├── public/assets/
-│   ├── eric-warrior.png | prim-priestess.png | raizen-ninja.png
+│   ├── eric-warrior.png | prim-priestess.png | raizen-ninja.png  # extract sources (stripped from dist)
 │   ├── paste.png | captain-gully.png
-│   ├── generated/*-atlas.{png,json}
-│   ├── maps/dungeon-room.json + dungeon-tiles.png
-│   └── audio/*.ogg           # placeholder SFX + BGM
+│   ├── generated/*-atlas.{png,json}   # BootScene loads these
+│   ├── maps/dungeon-tiles.png (+ dungeon-room.* for Tiled; stripped from dist)
+│   └── audio/*.ogg (+ .wav fallback)
 └── src/
     ├── main.ts
     ├── heroes.ts             # deprecated re-export → data/players
@@ -257,8 +257,8 @@ shining-soul-2-web/
         └── Boss.ts           # Captain Gully
 ```
 
-Edit the map in [Tiled](https://www.mapeditor.org/): open `public/assets/maps/dungeon-room.json` (or `.tmj`), paint `walls`, move `spawns` objects, save JSON, refresh Vite.  
-可用 Tiled 編輯地圖後刷新即可。
+Edit the reference map in [Tiled](https://www.mapeditor.org/): open `public/assets/maps/dungeon-room.json` (or `.tmj`). Runtime rooms are built by `MapGenerator` (BootScene only loads `dungeon-tiles`; room JSON is stripped from dist).  
+可用 Tiled 編輯參考地圖；正式關卡由 MapGenerator 生成（room JSON 不上線）。
 
 ---
 

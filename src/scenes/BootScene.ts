@@ -14,11 +14,52 @@ import { HERO_ORDER, HEROES } from '../data/players';
  * - Map tiles: original placeholders (Spriters has no SS2 tilesets)
  */
 export class BootScene extends Phaser.Scene {
+  private loadTrack?: Phaser.GameObjects.Graphics;
+  private loadFill?: Phaser.GameObjects.Graphics;
+  private loadLabel?: Phaser.GameObjects.Text;
+  private onLoadProgress?: (value: number) => void;
+
   constructor() {
     super('BootScene');
   }
 
   preload(): void {
+    const cam = this.cameras.main;
+    const barW = 160;
+    const barH = 8;
+    const x = Math.round(cam.centerX - barW / 2);
+    const y = Math.round(cam.centerY);
+
+    this.loadTrack = this.add.graphics();
+    this.loadTrack.fillStyle(0x0e1a0e, 1);
+    this.loadTrack.fillRect(x - 1, y - 1, barW + 2, barH + 2);
+
+    this.loadFill = this.add.graphics();
+    this.loadLabel = this.add
+      .text(Math.round(cam.centerX), y - 4, '載入中… 0%', {
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        color: '#d8ffd8',
+        resolution: 1,
+      })
+      .setOrigin(0.5, 1);
+
+    this.onLoadProgress = (value: number) => {
+      const clamped = Phaser.Math.Clamp(value, 0, 1);
+      const pct = Math.round(clamped * 100);
+      const fill = this.loadFill;
+      if (fill) {
+        fill.clear();
+        const w = Math.round(barW * clamped);
+        if (w > 0) {
+          fill.fillStyle(0x6dff6d, 1);
+          fill.fillRect(x, y, w, barH);
+        }
+      }
+      this.loadLabel?.setText(`載入中… ${pct}%`);
+    };
+    this.load.on('progress', this.onLoadProgress);
+
     this.load.atlas('eric', 'assets/generated/eric-atlas.png', 'assets/generated/eric-atlas.json');
     this.load.atlas('prim', 'assets/generated/prim-atlas.png', 'assets/generated/prim-atlas.json');
     this.load.atlas(
@@ -46,6 +87,17 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
+    if (this.onLoadProgress) {
+      this.load.off('progress', this.onLoadProgress);
+      this.onLoadProgress = undefined;
+    }
+    this.loadTrack?.destroy();
+    this.loadFill?.destroy();
+    this.loadLabel?.destroy();
+    this.loadTrack = undefined;
+    this.loadFill = undefined;
+    this.loadLabel = undefined;
+
     this.createHeroAnimations();
     this.createEnemyAnimations();
     this.scene.start('SelectScene');
