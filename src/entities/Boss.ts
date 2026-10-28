@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { Facing } from '../data/types';
 import type { TilePathfinder } from '../ai/TilePathfinder';
+import { GameAudio } from '../audio/GameAudio';
 import { showLootToastDom } from '../ui/LootToastDom';
 import { EnemyBase } from './EnemyBase';
 
@@ -180,6 +181,7 @@ export class Boss extends EnemyBase {
     const next = this.phaseFromHp();
     if (next <= this.combatPhase) return;
     this.combatPhase = next;
+    GameAudio.get(this.scene)?.bossPhase();
     this.setTint(0xffaa44);
     this.scene.time.delayedCall(220, () => {
       if (this.active && !this.dying && this.scene.time.now >= this.iframeUntil) {
@@ -288,6 +290,7 @@ export class Boss extends EnemyBase {
   private beginAttack(kind: AttackKind, time: number): void {
     const token = ++this.attackToken;
     this.clearTelegraphs();
+    GameAudio.get(this.scene)?.bossTelegraph();
     this.setVelocity(0, 0);
     this.pather?.reset();
 
