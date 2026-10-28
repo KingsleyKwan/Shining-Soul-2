@@ -12,6 +12,15 @@ export const SAVE_STORAGE_KEY = 'shining-soul-2-save-v1';
 
 export const SAVE_VERSION = 1;
 
+export type StoryFlags = {
+  /** Intro / Deatharte / King cards already shown. */
+  seenIntro: boolean;
+  /** Stage 1 哥不林要塞 cleared (Captain Gully defeated + exit). */
+  goblinCleared: boolean;
+  /** Player has visited the village hub at least once. */
+  villageVisited: boolean;
+};
+
 export type SaveData = {
   version: 1;
   heroId: HeroId;
@@ -20,6 +29,9 @@ export type SaveData = {
   equipped: Partial<Record<EquipSlot, RolledItem>>;
   /** Permanently unlocked stage ids. Always includes 1. Missing on old saves → [1]. */
   unlockedStages: StageId[];
+  seenIntro: boolean;
+  goblinCleared: boolean;
+  villageVisited: boolean;
 };
 
 export function isHeroId(value: unknown): value is HeroId {
@@ -90,6 +102,67 @@ export function unlockStage(data: SaveData, stageId: StageId): SaveData {
   };
 }
 
+export function getFlags(data: SaveData | null | undefined): StoryFlags {
+  return {
+    seenIntro: !!data?.seenIntro,
+    goblinCleared: !!data?.goblinCleared,
+    villageVisited: !!data?.villageVisited,
+  };
+}
+
+/** Merge story flags onto a save (idempotent for true flags when patching true). */
+export function withFlags(data: SaveData, patch: Partial<StoryFlags>): SaveData {
+  return {
+    ...data,
+    seenIntro: patch.seenIntro ?? data.seenIntro,
+    goblinCleared: patch.goblinCleared ?? data.goblinCleared,
+    villageVisited: patch.villageVisited ?? data.villageVisited,
+  };
+}
+
+/** Build a fresh v1 profile for a hero (new game). */
+export function makeFreshSave(heroId: HeroId, flags?: Partial<StoryFlags>): SaveData {
+  return {
+    version: 1,
+    heroId,
+    gold: 0,
+    bag: [],
+    equipped: {},
+    unlockedStages: defaultUnlockedStages(),
+    seenIntro: !!flags?.seenIntro,
+    goblinCleared: !!flags?.goblinCleared,
+    villageVisited: !!flags?.villageVisited,
+  };
+}
+
+/**
+ * Merge gold/gear/hero onto the existing profile while keeping unlocks + story flags
+ * unless `patch` overrides them.
+ */
+export function mergeProfile(
+  existing: SaveData | null | undefined,
+  patch: {
+    heroId: HeroId;
+    gold?: number;
+    bag?: RolledItem[];
+    equipped?: Partial<Record<EquipSlot, RolledItem>>;
+    unlockedStages?: StageId[];
+  } & Partial<StoryFlags>,
+): SaveData {
+  const base = existing ?? makeFreshSave(patch.heroId);
+  return {
+    version: 1,
+    heroId: patch.heroId,
+    gold: patch.gold ?? base.gold,
+    bag: patch.bag ?? base.bag,
+    equipped: patch.equipped ?? base.equipped,
+    unlockedStages: sanitizeUnlocked(patch.unlockedStages ?? base.unlockedStages),
+    seenIntro: patch.seenIntro ?? base.seenIntro,
+    goblinCleared: patch.goblinCleared ?? base.goblinCleared,
+    villageVisited: patch.villageVisited ?? base.villageVisited,
+  };
+}
+
 function getStorage(): Storage | null {
   try {
     if (typeof localStorage === 'undefined') return null;
@@ -121,6 +194,10 @@ function sanitizeUnlocked(value: unknown): StageId[] {
   return [...out].sort((a, b) => a - b);
 }
 
+function asBool(value: unknown): boolean {
+  return value === true;
+}
+
 function parseSave(value: unknown): SaveData | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
@@ -136,5 +213,8 @@ function parseSave(value: unknown): SaveData | null {
     bag: snap.bag,
     equipped: snap.equipped,
     unlockedStages: sanitizeUnlocked(raw.unlockedStages),
+    seenIntro: asBool(raw.seenIntro),
+    goblinCleared: asBool(raw.goblinCleared),
+    villageVisited: asBool(raw.villageVisited),
   };
 }

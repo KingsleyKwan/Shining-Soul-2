@@ -41,9 +41,9 @@ export class StageSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     this.add
-      .text(width / 2, 48, '揀關卡', {
+      .text(width / 2, 48, '揀關卡 · 亦可從村莊出發', {
         fontFamily: 'monospace',
-        fontSize: '12px',
+        fontSize: '11px',
         color: '#88aa88',
       })
       .setOrigin(0.5);
@@ -114,10 +114,13 @@ export class StageSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.addMenuButton(width / 2 - 50, height - 28, '返回選角', 0x1e3020, 0x4a7a4a, () => {
+    this.addMenuButton(width / 2 - 90, height - 28, '回城', 0x3a2a18, 0xffcc66, () => {
+      this.scene.start('VillageScene');
+    });
+    this.addMenuButton(width / 2, height - 28, '返回選角', 0x1e3020, 0x4a7a4a, () => {
       this.scene.start('SelectScene');
     });
-    this.addMenuButton(width / 2 + 50, height - 28, '開始', 0x2a4a28, 0x6dffa0, () => {
+    this.addMenuButton(width / 2 + 90, height - 28, '開始', 0x2a4a28, 0x6dffa0, () => {
       this.confirm();
     });
 
@@ -158,8 +161,8 @@ export class StageSelectScene extends Phaser.Scene {
     stroke: number,
     onClick: () => void,
   ): void {
-    const w = 88;
-    const h = 18;
+    const w = 78;
+    const h = 22;
     const bg = this.add.rectangle(0, 0, w, h, fill, 0.95).setStrokeStyle(1, stroke);
     const caption = this.add
       .text(0, 0, label, {

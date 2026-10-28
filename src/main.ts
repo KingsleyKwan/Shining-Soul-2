@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { SelectScene } from './scenes/SelectScene';
+import { StoryScene } from './scenes/StoryScene';
+import { VillageScene } from './scenes/VillageScene';
 import { StageSelectScene } from './scenes/StageSelectScene';
 import { GameScene } from './scenes/GameScene';
 
@@ -31,7 +33,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, SelectScene, StageSelectScene, GameScene],
+  scene: [BootScene, SelectScene, StoryScene, VillageScene, StageSelectScene, GameScene],
 };
 
 const game = new Phaser.Game(config);
