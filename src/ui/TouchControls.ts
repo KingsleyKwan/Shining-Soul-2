@@ -318,10 +318,18 @@ function enableCircleHit(
   );
 }
 
-/** Touch screen, coarse pointer, or Phaser's own touch flag. */
+/**
+ * Touch screen, coarse pointer, Phaser touch flag, or a phone-like canvas.
+ * Portrait QA emulators often lack maxTouchPoints — still show the stick there.
+ */
 export function isTouchCapable(scene: Phaser.Scene): boolean {
   if (scene.sys.game.device.input.touch) return true;
   if (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) return true;
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  return window.matchMedia('(pointer: coarse)').matches;
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    if (window.matchMedia('(pointer: coarse)').matches) return true;
+  }
+  const w = scene.scale.width;
+  const h = scene.scale.height;
+  // Narrow or tall EXPAND sizes (iPhone portrait / landscape emulator).
+  return w > 0 && h > 0 && Math.min(w, h) <= 500;
 }

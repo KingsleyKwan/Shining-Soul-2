@@ -1096,17 +1096,21 @@ export class GameScene extends Phaser.Scene {
     this.uiCam.ignore(go);
   }
 
-  /** Route objects to the unzoomed UI camera only (main ignores them). */
+  /**
+   * Route objects to the unzoomed UI camera only.
+   * Phaser Camera.id is already a bitmask (1, 2, 4, …) — never `1 << id`.
+   */
   private promoteUi(
     ...objs: Array<Phaser.GameObjects.GameObject | undefined | null>
   ): void {
     if (!this.uiCam) return;
-    const bit = 1 << this.uiCam.id;
+    const mainBit = this.cameras.main.id;
+    const uiBit = this.uiCam.id;
     for (const o of objs) {
       if (!o) continue;
       this.uiObjects.add(o);
-      this.cameras.main.ignore(o);
-      o.cameraFilter &= ~bit;
+      // Ignore on world cam; clear any earlier uiCam.ignore from onAddedToScene.
+      o.cameraFilter = (o.cameraFilter | mainBit) & ~uiBit;
     }
   }
 
