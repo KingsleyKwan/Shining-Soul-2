@@ -13,6 +13,9 @@
 
 export type RoomId = 'a' | 'c' | 'b' | 'boss';
 
+/** Ground pattern. Checker is the stock fort; stripe / dense read as another stage. */
+export type FloorStyle = 'checker' | 'stripe' | 'dense';
+
 export type DungeonOptions = {
   /** Multiplier on Paste HP (ceil). Default 1. */
   pasteHpScale?: number;
@@ -21,6 +24,13 @@ export type DungeonOptions = {
    * first, then falls back to the base count so layouts stay clearable.
    */
   pasteCountBonus?: number;
+  /**
+   * Pillar / wall-stub multiplier. 1 matches the stock fort rolls.
+   * Clamped to 0.5–1.6. The door cross is never decorated.
+   */
+  propDensity?: number;
+  /** Floor pattern. Default checker. Boss rooms keep a distinct motif per style. */
+  floorStyle?: FloorStyle;
 };
 
 export type GeneratedDungeon = {
@@ -176,7 +186,12 @@ export function generateDungeon(seed?: number, options?: DungeonOptions): Genera
   );
 }
 
-type NormalizedOptions = { pasteHpScale: number; pasteCountBonus: number };
+type NormalizedOptions = {
+  pasteHpScale: number;
+  pasteCountBonus: number;
+  propDensity: number;
+  floorStyle: FloorStyle;
+};
 
 function normalizeOptions(options?: DungeonOptions): NormalizedOptions {
   const scale =
@@ -188,7 +203,15 @@ function normalizeOptions(options?: DungeonOptions): NormalizedOptions {
     typeof bonusRaw === 'number' && Number.isFinite(bonusRaw) && bonusRaw > 0
       ? Math.floor(bonusRaw)
       : 0;
-  return { pasteHpScale: scale, pasteCountBonus: bonus };
+  const densityRaw = options?.propDensity;
+  const propDensity =
+    typeof densityRaw === 'number' && Number.isFinite(densityRaw)
+      ? Math.min(1.6, Math.max(0.5, densityRaw))
+      : 1;
+  const style = options?.floorStyle;
+  const floorStyle: FloorStyle =
+    style === 'stripe' || style === 'dense' || style === 'checker' ? style : 'checker';
+  return { pasteHpScale: scale, pasteCountBonus: bonus, propDensity, floorStyle };
 }
 
 function scaledPasteHp(room: RoomId, scale: number): number {
@@ -226,11 +249,11 @@ function tryGenerate(seed: number, opts: NormalizedOptions): Attempt {
       h: ROOM_H * TILE,
     };
     const phase = Math.floor(rng() * (id === 'boss' ? 3 : 2));
-    fillRoomShell(ground, walls, mapW, cell, id === 'boss' ? 'boss' : 'checker', phase);
+    fillRoomShell(ground, walls, mapW, cell, opts.floorStyle, phase, id === 'boss');
   }
 
   for (const id of ROOM_IDS) {
-    paintDecor(rng, id, cells[id], walls, mapW);
+    paintDecor(rng, id, cells[id], walls, mapW, opts.propDensity);
   }
 
   const links: { from: RoomId; to: RoomId; side: Side }[] = [];
@@ -349,13 +372,26 @@ function layoutRooms(rng: () => number): Record<RoomId, Cell> | null {
   return cells;
 }
 
+/** floorA when true. Checker + boss matches the original shell exactly. */
+function floorIsA(style: FloorStyle, x: number, y: number, phase: number, boss: boolean): boolean {
+  if (style === 'checker') {
+    return boss ? (x * 2 + y + phase) % 3 === 0 : (x + y + phase) % 2 === 0;
+  }
+  if (style === 'stripe') {
+    // Vertical bands in the arena, horizontal bands in the corridors.
+    return boss ? Math.floor((x + phase) / 2) % 2 === 0 : Math.floor((y + phase) / 2) % 2 === 0;
+  }
+  return boss ? (x + y * 2 + phase) % 3 !== 1 : (x * 3 + y * 2 + phase) % 4 === 0;
+}
+
 function fillRoomShell(
   ground: number[],
   walls: number[],
   mapW: number,
   cell: Cell,
-  floor: 'checker' | 'boss',
+  floor: FloorStyle,
   phase: number,
+  boss: boolean,
 ): void {
   const x0 = cell.x * ROOM_W;
   const y0 = cell.y * ROOM_H;
@@ -363,15 +399,7 @@ function fillRoomShell(
   const y1 = y0 + ROOM_H - 1;
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
-      const gid =
-        floor === 'boss'
-          ? (x * 2 + y + phase) % 3 === 0
-            ? GID.floorA
-            : GID.floorB
-          : (x + y + phase) % 2 === 0
-            ? GID.floorA
-            : GID.floorB;
-      ground[y * mapW + x] = gid;
+      ground[y * mapW + x] = floorIsA(floor, x, y, phase, boss) ? GID.floorA : GID.floorB;
     }
   }
   // Top lip is two tiles (cap + inner) so a vertical door must clear both.
@@ -390,12 +418,37 @@ function fillRoomShell(
   }
 }
 
+function paintStub(
+  rng: () => number,
+  quad: (typeof QUADS)[number],
+  len: number,
+  horizontal: boolean,
+  put: (lx: number, ly: number, gid: number) => void,
+): void {
+  if (horizontal) {
+    const span = quad.x1 - quad.x0 - len + 1;
+    if (span >= 0) {
+      const x = quad.x0 + Math.floor(rng() * (span + 1));
+      const y = quad.y0 + Math.floor(rng() * (quad.y1 - quad.y0 + 1));
+      for (let i = 0; i < len; i++) put(x + i, y, GID.wall);
+    }
+  } else {
+    const span = quad.y1 - quad.y0 - len + 1;
+    if (span >= 0) {
+      const y = quad.y0 + Math.floor(rng() * (span + 1));
+      const x = quad.x0 + Math.floor(rng() * (quad.x1 - quad.x0 + 1));
+      for (let i = 0; i < len; i++) put(x, y + i, GID.wall);
+    }
+  }
+}
+
 function paintDecor(
   rng: () => number,
   room: RoomId,
   cell: Cell,
   walls: number[],
   mapW: number,
+  density: number,
 ): void {
   const ox = cell.x * ROOM_W;
   const oy = cell.y * ROOM_H;
@@ -405,30 +458,32 @@ function paintDecor(
     walls[(oy + ly) * mapW + (ox + lx)] = gid;
   };
   for (const quad of QUADS) {
-    const pillars = room === 'boss' ? 1 + (rng() < 0.55 ? 1 : 0) : rng() < 0.75 ? 1 : 0;
+    // Density 1 consumes the same single pillar roll as the stock fort.
+    let pillars =
+      room === 'boss'
+        ? 1 + (rng() < Math.min(0.95, 0.55 * density) ? 1 : 0)
+        : rng() < Math.min(0.95, 0.75 * density)
+          ? 1
+          : 0;
+    if (density > 1.05 && rng() < (density - 1) * (room === 'boss' ? 0.85 : 0.9)) pillars += 1;
+    if (room !== 'boss' && density > 1.25 && rng() < (density - 1.2) * 0.8) pillars += 1;
+    pillars = Math.min(3, pillars);
     for (let i = 0; i < pillars; i++) {
       const lx = quad.x0 + Math.floor(rng() * (quad.x1 - quad.x0 + 1));
       const ly = quad.y0 + Math.floor(rng() * (quad.y1 - quad.y0 + 1));
       put(lx, ly, GID.pillar);
     }
-    if (rng() < 0.5) {
+    const stubP = Math.min(0.9, 0.5 * density);
+    if (rng() < stubP) {
+      // Same draw order as the stock fort. Extra length only rolls above density 1.2.
       const horizontal = rng() < 0.5;
-      const len = 3 + Math.floor(rng() * 3);
-      if (horizontal) {
-        const span = quad.x1 - quad.x0 - len + 1;
-        if (span >= 0) {
-          const x = quad.x0 + Math.floor(rng() * (span + 1));
-          const y = quad.y0 + Math.floor(rng() * (quad.y1 - quad.y0 + 1));
-          for (let i = 0; i < len; i++) put(x + i, y, GID.wall);
-        }
-      } else {
-        const span = quad.y1 - quad.y0 - len + 1;
-        if (span >= 0) {
-          const y = quad.y0 + Math.floor(rng() * (span + 1));
-          const x = quad.x0 + Math.floor(rng() * (quad.x1 - quad.x0 + 1));
-          for (let i = 0; i < len; i++) put(x, y + i, GID.wall);
-        }
-      }
+      const len = 3 + Math.floor(rng() * 3) + (density > 1.2 && rng() < 0.4 ? 1 : 0);
+      paintStub(rng, quad, len, horizontal, put);
+    }
+    if (density > 1.15 && rng() < (density - 1) * 0.55) {
+      const horizontal = rng() < 0.5;
+      const len = 2 + Math.floor(rng() * 2);
+      paintStub(rng, quad, len, horizontal, put);
     }
   }
 }

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { GameAudio } from '../audio/GameAudio';
 import { HERO_ORDER, HEROES, SELECTED_HERO_KEY, type HeroId } from '../data/players';
 import * as SaveManager from '../systems/SaveManager';
 
@@ -8,6 +9,7 @@ import * as SaveManager from '../systems/SaveManager';
  */
 export class SelectScene extends Phaser.Scene {
   private selected: HeroId = 'eric';
+  private audio!: GameAudio;
   private cards: {
     id: HeroId;
     container: Phaser.GameObjects.Container;
@@ -21,6 +23,9 @@ export class SelectScene extends Phaser.Scene {
   create(): void {
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor('#142018');
+    this.audio = GameAudio.attach(this);
+    this.audio.startBgm('title');
+    this.input.once('pointerdown', () => this.audio.ensurePlaying());
     const saved = SaveManager.load();
 
     this.add
@@ -197,6 +202,7 @@ export class SelectScene extends Phaser.Scene {
 
   /** Keep gold, gear, and unlocks; remember the highlighted hero → story or village. */
   private confirm(): void {
+    this.audio.confirm();
     this.registry.set(SELECTED_HERO_KEY, this.selected);
     const existing = SaveManager.load();
     SaveManager.save(
@@ -213,6 +219,7 @@ export class SelectScene extends Phaser.Scene {
 
   /** Drop the profile and start the highlighted hero → intro story. */
   private startNewGame(): void {
+    this.audio.confirm();
     SaveManager.clear();
     this.registry.set(SELECTED_HERO_KEY, this.selected);
     SaveManager.save(SaveManager.makeFreshSave(this.selected));

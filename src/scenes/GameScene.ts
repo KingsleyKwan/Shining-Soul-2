@@ -33,12 +33,22 @@ type RoomId = 'a' | 'c' | 'b' | 'boss';
 
 const ROOM_ORDER: RoomId[] = ['a', 'c', 'b', 'boss'];
 
-const ROOM_LABELS: Record<RoomId, string> = {
-  a: '要塞入口',
-  c: '哥不林迴廊',
-  b: '寶箱房',
-  boss: '蓋利隊長 · 競技場',
+const ROOM_LABELS: Record<StageId, Record<RoomId, string>> = {
+  1: {
+    a: '要塞入口',
+    c: '哥不林迴廊',
+    b: '寶箱房',
+    boss: '蓋利隊長 · 競技場',
+  },
+  2: {
+    a: '深層入口',
+    c: '寒迴廊',
+    b: '寶箱房',
+    boss: '深淵競技場',
+  },
 };
+
+/** Darken a 0xRRGGBB multiply tint so walls sit under the floor. */
 
 /** Default Paste HP when the map object has no hp property. */
 const PASTE_HP: Record<RoomId, number> = {
@@ -119,6 +129,8 @@ export class GameScene extends Phaser.Scene {
   private runSeed = 0;
   /** Stage chosen on StageSelectScene (default 1). */
   private runStage: StageId = 1;
+  /** Combat rooms that already played the clear sting this run. */
+  private clearedRooms = new Set<RoomId>();
   private rooms!: Record<RoomId, Rect>;
   private pathfinder!: TilePathfinder;
   private audio!: GameAudio;
@@ -157,6 +169,7 @@ export class GameScene extends Phaser.Scene {
     this.exitActive = false;
     this.transitioning = false;
     this.currentRoom = 'a';
+    this.clearedRooms.clear();
     this.chestOpened = false;
     this.gold = 0;
     this.inventory = new Inventory();
@@ -167,7 +180,11 @@ export class GameScene extends Phaser.Scene {
     this.runStage = coerceStageId(this.registry.get(SELECTED_STAGE_KEY));
     this.registry.set(SELECTED_STAGE_KEY, this.runStage);
     const stageDef = getStage(this.runStage);
-    const generated = generateDungeon(rollDungeonSeed(), stageDef.mapOptions);
+    const generated = generateDungeon(rollDungeonSeed(), {
+      ...stageDef.mapOptions,
+      propDensity: stageDef.visual.propDensity,
+      floorStyle: stageDef.visual.floorStyle,
+    });
     this.runSeed = generated.seed;
     const mapKey = 'dungeon-run';
     this.cache.tilemap.remove(mapKey);
@@ -202,6 +219,7 @@ export class GameScene extends Phaser.Scene {
 
     const worldW = map.widthInPixels;
     const worldH = map.heightInPixels;
+    this.applyStageLook(ground, walls, worldW, worldH);
     // Full map physics bounds; camera clamps per room
     this.physics.world.setBounds(0, 0, worldW, worldH);
 
@@ -300,7 +318,7 @@ export class GameScene extends Phaser.Scene {
       .text(8, 56, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#c8e0ff',
+        color: stageDef.visual.nameplateColor,
         backgroundColor: '#00000088',
         padding: { x: 4, y: 3 },
       })
@@ -376,7 +394,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(100);
     this.refreshMuteHud();
 
-    this.audio.startBgm();
+    this.showStageNameplate();
     // Unlock / resume after the first gesture (browser autoplay policy).
     // Pointer covers taps; keyboard is optional and skipped when the plugin is absent.
     this.input.once('pointerdown', () => this.audio.ensurePlaying());
@@ -498,6 +516,7 @@ export class GameScene extends Phaser.Scene {
       } else if (this.inventoryOpen && this.player && !this.player.isDead()) {
         this.player.setVelocity(0, 0);
       }
+      if (!this.gameOver) this.maybeRoomClear();
     } catch (err) {
       console.error('[SS2] GameScene.update error', err);
     }
@@ -707,6 +726,7 @@ export class GameScene extends Phaser.Scene {
     this.drawChest(true);
     if (this.chestPrompt) this.chestPrompt.setVisible(false);
     this.audio.chest();
+    this.audio.pickup();
 
     const healed = this.player.heal(2);
     const goldGain = 25;
@@ -731,6 +751,7 @@ export class GameScene extends Phaser.Scene {
 
   private tryEnemyDrop(x: number, y: number, chance: number): void {
     if (this.gameOver || Math.random() > chance) return;
+    this.audio.pickup();
     const item = rollItem(Math.random, {
       allowedWeaponTypes: this.player.playerData.weapons.allowedTypes,
     });
@@ -880,6 +901,80 @@ export class GameScene extends Phaser.Scene {
     const r = this.rooms[room];
     this.cameras.main.setBounds(r.x, r.y, r.w, r.h);
     this.syncHostileRooms();
+    this.syncRoomBgm();
+  }
+
+  /** Stage bed, or the boss loop once Gully's room is the one on screen. */
+  private syncRoomBgm(): void {
+    if (!this.audio) return;
+    const bossHere = this.currentRoom === 'boss' && !!this.boss && !this.bossDefeated;
+    const bed = getStage(this.runStage).bgm;
+    this.audio.startBgm(bossHere ? 'boss' : bed);
+  }
+
+  /** Warm fort vs cold corridor: tint, fog, and the camera clear color. */
+  private applyStageLook(
+    ground: Phaser.Tilemaps.TilemapLayer,
+    walls: Phaser.Tilemaps.TilemapLayer,
+    worldW: number,
+    worldH: number,
+  ): void {
+    const theme = getStage(this.runStage).visual;
+    this.cameras.main.setBackgroundColor(theme.bgColor);
+    ground.setTint(theme.groundTint);
+    walls.setTint(theme.wallTint);
+    const fog = this.add.rectangle(
+      worldW / 2,
+      worldH / 2,
+      worldW,
+      worldH,
+      theme.fogColor,
+      theme.fogAlpha,
+    );
+    fog.setDepth(2);
+    fog.setScrollFactor(1);
+  }
+
+  /** Large stage name, then fade. Not interactive, so movement is never blocked. */
+  private showStageNameplate(): void {
+    const stage = getStage(this.runStage);
+    const { width, height } = this.scale;
+    const plate = this.add
+      .text(width / 2, height * 0.4, stage.nameZh, {
+        fontFamily: 'monospace',
+        fontSize: '28px',
+        color: stage.visual.nameplateColor,
+        stroke: '#000000',
+        strokeThickness: 6,
+        backgroundColor: '#00000099',
+        padding: { x: 18, y: 10 },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(90);
+    this.tweens.add({
+      targets: plate,
+      alpha: 0,
+      delay: 1600,
+      duration: 450,
+      onComplete: () => plate.destroy(),
+    });
+  }
+
+  /** Resolve sting the frame the last Paste in the current room starts dying. */
+  private maybeRoomClear(): void {
+    const room = this.currentRoom;
+    if (room === 'boss' || this.clearedRooms.has(room) || !this.enemies) return;
+    let any = false;
+    for (const child of this.enemies.getChildren()) {
+      const enemy = child as Enemy;
+      if (enemy.spawnRoom !== room) continue;
+      any = true;
+      if (!enemy.isDead()) return;
+    }
+    if (!any) return;
+    this.clearedRooms.add(room);
+    this.audio?.roomClear();
   }
 
   /** Park Pastes and the boss unless their spawn room is on screen. */
@@ -998,7 +1093,8 @@ export class GameScene extends Phaser.Scene {
 
   private refreshRoomHud(): void {
     const stageName = getStage(this.runStage).shortName;
-    let label = `${stageName} · ${ROOM_LABELS[this.currentRoom] ?? this.currentRoom}`;
+    const roomName = ROOM_LABELS[this.runStage][this.currentRoom] ?? this.currentRoom;
+    let label = `${stageName} · ${roomName}`;
     if (this.currentRoom === 'boss' && this.bossDefeated) label += ' · 出口已開';
     label += ` · #${this.runSeed}`;
     this.roomHud?.setText(label);
