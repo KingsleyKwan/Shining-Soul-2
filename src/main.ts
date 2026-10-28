@@ -30,7 +30,9 @@ const config: Phaser.Types.Core.GameConfig = {
     },
   },
   scale: {
-    mode: Phaser.Scale.FIT,
+    // EXPAND grows game size to cover the parent (no letterbox), then scales
+    // like FIT. Portrait phones get a taller canvas instead of black bars.
+    mode: Phaser.Scale.EXPAND,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   scene: [BootScene, SelectScene, StoryScene, VillageScene, StageSelectScene, GameScene],

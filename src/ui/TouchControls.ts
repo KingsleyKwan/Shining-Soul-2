@@ -73,21 +73,24 @@ export class TouchControls {
   private thumb?: Phaser.GameObjects.Arc;
   private stickZone?: Phaser.GameObjects.Zone;
   private held = new Map<number, HeldButton>();
+  /** Action buttons that must reflow when EXPAND changes canvas size. */
+  private buttons: {
+    circle: Phaser.GameObjects.Arc;
+    label: Phaser.GameObjects.Text;
+    anchor: (w: number, h: number) => { x: number; y: number };
+  }[] = [];
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.enabled = isTouchCapable(scene);
     if (!this.enabled) return;
 
-    const w = scene.scale.width;
-    const h = scene.scale.height;
     this.baseRadius = 36;
     this.maxTravel = 28;
 
     // Invisible left-half capture zone — first touch here = stick origin.
     // Right half is reserved for ATK／技／包／E so those buttons keep priority.
-    const halfW = w * 0.5;
-    this.stickZone = scene.add.zone(halfW * 0.5, h * 0.5, halfW, h);
+    this.stickZone = scene.add.zone(0, 0, 1, 1);
     this.stickZone.setScrollFactor(0);
     this.stickZone.setDepth(UI_DEPTH - 1);
     this.stickZone.setInteractive();
@@ -110,14 +113,34 @@ export class TouchControls {
     this.thumb.setVisible(false);
     this.thumb.disableInteractive();
 
-    this.makeButton(w - 48, h - 58, 30, '攻擊', 12, 0xb42323, 'attack', 46);
-    this.makeButton(w - 112, h - 42, 24, 'E', 14, 0xc4922a, 'interact', 36);
+    this.makeButton((w, h) => ({ x: w - 48, y: h - 58 }), 30, '攻擊', 12, 0xb42323, 'attack', 46);
+    this.makeButton((w, h) => ({ x: w - 112, y: h - 42 }), 24, 'E', 14, 0xc4922a, 'interact', 36);
     // Above E so it does not cover ATK / E / R / ☰.
-    this.makeButton(w - 112, h - 90, 22, '技', 14, 0x4a3aa8, 'skill', 30);
-    this.makeButton(w - 68, 22, 18, 'R', 12, 0x163044, 'restart', 28);
-    this.makeButton(w - 24, 22, 18, '☰', 14, 0x163044, 'menu', 28);
+    this.makeButton((w, h) => ({ x: w - 112, y: h - 90 }), 22, '技', 14, 0x4a3aa8, 'skill', 30);
+    this.makeButton((w, _h) => ({ x: w - 68, y: 22 }), 18, 'R', 12, 0x163044, 'restart', 28);
+    this.makeButton((w, _h) => ({ x: w - 24, y: 22 }), 18, '☰', 14, 0x163044, 'menu', 28);
     // Inventory / equipment (left of R so it stays clear of ATK / E / 技).
-    this.makeButton(w - 112, 22, 18, '包', 11, 0x2a4a3a, 'inventory', 28);
+    this.makeButton((w, _h) => ({ x: w - 112, y: 22 }), 18, '包', 11, 0x2a4a3a, 'inventory', 28);
+    this.layout();
+  }
+
+  /** Reflow stick zone + action buttons to the live canvas (EXPAND / rotate). */
+  layout(): void {
+    if (!this.enabled) return;
+    const w = this.scene.scale.width;
+    const h = this.scene.scale.height;
+    const halfW = w * 0.5;
+    if (this.stickZone?.active) {
+      this.stickZone.setPosition(halfW * 0.5, h * 0.5);
+      this.stickZone.setSize(halfW, h);
+      // Refresh hit area after setSize.
+      this.stickZone.setInteractive();
+    }
+    for (const btn of this.buttons) {
+      const at = btn.anchor(w, h);
+      if (btn.circle.active) btn.circle.setPosition(at.x, at.y);
+      if (btn.label.active) btn.label.setPosition(at.x, at.y);
+    }
   }
 
   /** Move vector in [-1, 1] plus one-frame edges for ATK / 技 / E / R / menu. */
@@ -166,8 +189,7 @@ export class TouchControls {
   }
 
   private makeButton(
-    x: number,
-    y: number,
+    anchor: (w: number, h: number) => { x: number; y: number },
     radius: number,
     label: string,
     fontSize: number,
@@ -176,7 +198,8 @@ export class TouchControls {
     hitRadius: number,
   ): void {
     const idleAlpha = 0.78;
-    const circle = this.scene.add.circle(x, y, radius, fill, idleAlpha);
+    const at = anchor(this.scene.scale.width, this.scene.scale.height);
+    const circle = this.scene.add.circle(at.x, at.y, radius, fill, idleAlpha);
     circle.setStrokeStyle(2, 0xffffff, 0.7);
     circle.setScrollFactor(0);
     // Interactive circle above the label so topOnly never skips the hit target.
@@ -195,8 +218,8 @@ export class TouchControls {
       }
     });
 
-    this.scene.add
-      .text(x, y, label, {
+    const text = this.scene.add
+      .text(at.x, at.y, label, {
         fontFamily: 'monospace',
         fontSize: `${fontSize}px`,
         color: '#ffffff',
@@ -204,6 +227,7 @@ export class TouchControls {
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(UI_DEPTH + 3);
+    this.buttons.push({ circle, label: text, anchor });
   }
 
   private syncStick(): void {

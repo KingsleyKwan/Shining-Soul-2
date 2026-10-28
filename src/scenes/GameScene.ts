@@ -65,8 +65,9 @@ const DOOR_TRIGGER_GROW = 24;
 const ROOM_CLAMP_INSET = 4;
 
 /**
- * World zoom on the 480×320 view. 1.25 shows 384×256 of a 768×512 room,
- * so the fighter fills more of the FIT canvas and setBounds still hides the void.
+ * Preferred world zoom on the base 480×320 view (shows 384×256 of a 768×512 room).
+ * On tall/wide EXPAND canvases we raise zoom so the camera never shows void
+ * outside the current room bounds.
  */
 const CAMERA_ZOOM = 1.25;
 
@@ -421,6 +422,17 @@ export class GameScene extends Phaser.Scene {
       this.runInfo = undefined;
     });
     this.refreshRunInfo();
+
+    const onGameResize = (): void => {
+      if (this.currentRoom) this.applyRoomCamera(this.currentRoom);
+      this.touch?.layout();
+      this.runInfo?.layout(this.touch?.enabled ?? false);
+      this.runInfo && this.refreshRunInfo();
+    };
+    this.scale.on('resize', onGameResize);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off('resize', onGameResize);
+    });
 
     this.inventoryPanel = new InventoryPanel(this, {
       onEquip: (uid) => this.equipBagItem(uid),
@@ -980,11 +992,22 @@ export class GameScene extends Phaser.Scene {
     const r = this.rooms[room];
     const cam = this.cameras.main;
     cam.setRoundPixels(false);
-    cam.setZoom(CAMERA_ZOOM);
+    cam.setZoom(this.roomCoverZoom(r.w, r.h));
     cam.setBounds(r.x, r.y, r.w, r.h);
     this.syncHostileRooms();
     this.syncRoomBgm();
     this.refreshRunInfo();
+  }
+
+  /**
+   * Prefer CAMERA_ZOOM, but never less than the zoom that covers the room
+   * with the live canvas — stops black void on tall portrait EXPAND sizes.
+   */
+  private roomCoverZoom(roomW: number, roomH: number): number {
+    const viewW = Math.max(1, this.scale.width);
+    const viewH = Math.max(1, this.scale.height);
+    const cover = Math.max(viewW / roomW, viewH / roomH);
+    return Math.max(CAMERA_ZOOM, cover);
   }
 
   /** Stage bed, or the boss loop once Gully's room is the one on screen. */

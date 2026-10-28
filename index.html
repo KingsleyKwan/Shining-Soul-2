@@ -3,6 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <title>光明之魂2 — 學習原型</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -18,26 +20,31 @@
         inset: 0;
         width: 100%;
         height: 100%;
+        height: 100dvh;
         background: #0b0f14;
         color: #e8eef5;
         font-family: system-ui, sans-serif;
         overflow: hidden;
       }
       #app {
+        position: absolute;
+        inset: 0;
         width: 100%;
         height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        /* Safe-area kept as margin so Phaser parent bounds = usable play area. */
         padding:
           env(safe-area-inset-top)
           env(safe-area-inset-right)
           env(safe-area-inset-bottom)
           env(safe-area-inset-left);
+        /* Do not flex-center: EXPAND canvas should own the full padded box. */
+        display: block;
+        overflow: hidden;
       }
-      canvas {
+      #app canvas {
         display: block;
         image-rendering: pixelated;
+        image-rendering: crisp-edges;
       }
     </style>
   </head>
