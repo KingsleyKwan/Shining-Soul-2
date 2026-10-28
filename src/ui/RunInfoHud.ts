@@ -45,8 +45,10 @@ export class RunInfoHud {
   private readonly gearBg: Phaser.GameObjects.Graphics;
   private readonly gearText: Phaser.GameObjects.Text;
   private readonly labels: Record<RoomId, Phaser.GameObjects.Text>;
+  private touch: boolean;
 
   constructor(scene: Phaser.Scene, opts: { touch: boolean }) {
+    this.touch = opts.touch;
     const mapAt = mapOrigin(scene.scale.width);
     this.mapGfx = scene.add.graphics().setScrollFactor(0).setDepth(100);
 
@@ -63,7 +65,7 @@ export class RunInfoHud {
         .setDepth(102);
     }
 
-    const gearAt = gearOrigin(scene.scale.height, opts.touch);
+    const gearAt = gearOrigin(scene.scale.height, this.touch);
     this.gearBg = scene.add.graphics().setScrollFactor(0).setDepth(100);
     this.gearText = scene.add
       .text(gearAt.x, gearAt.y, '', {
@@ -75,6 +77,14 @@ export class RunInfoHud {
       .setScrollFactor(0)
       .setDepth(101);
 
+    this.drawGearChrome();
+  }
+
+  /** Reposition gear / minimap after EXPAND canvas size changes. */
+  layout(touch: boolean): void {
+    this.touch = touch;
+    const gearAt = gearOrigin(this.gearText.scene.scale.height, this.touch);
+    this.gearText.setPosition(gearAt.x, gearAt.y);
     this.drawGearChrome();
   }
 

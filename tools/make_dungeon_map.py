@@ -55,39 +55,51 @@ def px(img, x, y, c):
 
 
 def draw_floor(img, ox, oy, variant=0):
-    """Neutral stone so stage tints still read. Variant 1 is a touch lighter."""
-    base = (70, 82, 100, 255) if variant == 0 else (82, 94, 112, 255)
-    hi = (98, 112, 132, 255) if variant == 0 else (110, 124, 144, 255)
-    lo = (46, 54, 70, 255) if variant == 0 else (52, 60, 76, 255)
-    grit = (86, 96, 114, 255) if variant == 0 else (96, 108, 126, 255)
+    """Flagstone / brick floor. Horizontal courses + mortar — not vertical planks."""
+    mortar = (38, 44, 56, 255)
+    stone_a = (72, 84, 102, 255) if variant == 0 else (84, 96, 114, 255)
+    stone_b = (88, 100, 118, 255) if variant == 0 else (98, 110, 128, 255)
+    stone_hi = (108, 120, 138, 255) if variant == 0 else (118, 130, 148, 255)
+    stone_lo = (52, 60, 74, 255) if variant == 0 else (58, 66, 80, 255)
+    # Two brick courses (offset like running bond) inside the 16×16 tile.
+    # variant=1 shifts the seam so checker floors do not align into planks.
+    x_off = 0 if variant == 0 else 4
+    courses = [(1, 6), (9, 6)]
     for y in range(TILE):
         for x in range(TILE):
-            n = (x * 3 + y * 7 + variant * 11) % 7
-            c = base
-            if n == 0:
-                c = hi
-            elif n == 1:
-                c = grit
-            elif n >= 5:
-                c = lo
-            px(img, ox + x, oy + y, c)
-    # Bevel so neighboring tiles don't melt into one flat field.
-    for i in range(TILE):
-        px(img, ox + i, oy, lo)
-        px(img, ox, oy + i, lo)
-        px(img, ox + i, oy + TILE - 1, hi)
-        px(img, ox + TILE - 1, oy + i, hi)
-    # A short crack / chip, different per variant, still inside the tile.
+            px(img, ox + x, oy + y, mortar)
+    for ci, (ry, rh) in enumerate(courses):
+        row_off = (x_off + (4 if ci % 2 else 0)) % 8
+        x = row_off - 8
+        while x < TILE:
+            bw = 7
+            for by in range(ry, min(ry + rh, TILE - 1)):
+                for bx in range(max(0, x), min(TILE, x + bw)):
+                    # Edge darkening so each stone reads as a block.
+                    edge = (
+                        by == ry
+                        or by == ry + rh - 1
+                        or bx == max(0, x)
+                        or bx == min(TILE, x + bw) - 1
+                    )
+                    n = (bx * 5 + by * 3 + variant * 9 + ci) % 5
+                    if edge:
+                        c = stone_lo if (bx + by) % 2 == 0 else mortar
+                    elif n == 0:
+                        c = stone_hi
+                    elif n == 1:
+                        c = stone_b
+                    else:
+                        c = stone_a
+                    px(img, ox + bx, oy + by, c)
+            x += bw + 1
+    # Tiny chip so neighboring tiles are not identical stamps.
     if variant == 0:
-        for i, (dx, dy) in enumerate(((4, 6), (5, 7), (6, 7), (7, 8), (8, 9))):
-            px(img, ox + dx, oy + dy, lo if i % 2 == 0 else (32, 36, 48, 255))
-        px(img, ox + 11, oy + 3, hi)
-        px(img, ox + 12, oy + 4, grit)
+        px(img, ox + 5, oy + 4, stone_hi)
+        px(img, ox + 11, oy + 12, stone_lo)
     else:
-        for dx, dy in ((3, 11), (4, 11), (5, 12), (6, 12), (10, 5), (11, 4)):
-            px(img, ox + dx, oy + dy, lo)
-        px(img, ox + 8, oy + 8, hi)
-        px(img, ox + 9, oy + 8, grit)
+        px(img, ox + 3, oy + 11, stone_hi)
+        px(img, ox + 12, oy + 5, stone_lo)
 
 
 def draw_wall(img, ox, oy, kind="solid"):

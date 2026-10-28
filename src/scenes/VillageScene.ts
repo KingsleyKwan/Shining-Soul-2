@@ -142,7 +142,7 @@ export class VillageScene extends Phaser.Scene {
     }
   }
 
-  /** Fixed 480×320 layout, derived from the live canvas so FIT stays aligned. */
+  /** Layout from the live canvas (EXPAND may be taller/wider than 480×320). */
   private hubSpots(w: number, h: number): {
     back: Spot;
     king: Spot;
