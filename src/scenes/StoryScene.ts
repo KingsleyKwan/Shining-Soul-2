@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { GameAudio } from '../audio/GameAudio';
 import { SELECTED_HERO_KEY, type HeroId } from '../data/players';
 import * as SaveManager from '../systems/SaveManager';
 
@@ -36,6 +37,7 @@ export class StoryScene extends Phaser.Scene {
   private bodyText?: Phaser.GameObjects.Text;
   private progressText?: Phaser.GameObjects.Text;
   private advancing = false;
+  private audio!: GameAudio;
 
   constructor() {
     super('StoryScene');
@@ -46,6 +48,9 @@ export class StoryScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#0c1418');
     this.index = 0;
     this.advancing = false;
+    this.audio = GameAudio.attach(this);
+    this.audio.startBgm('title');
+    this.input.once('pointerdown', () => this.audio.ensurePlaying());
 
     this.add
       .rectangle(width / 2, height / 2, width - 24, height - 24, 0x152028, 0.96)
@@ -140,16 +145,18 @@ export class StoryScene extends Phaser.Scene {
 
   private advance(): void {
     if (this.advancing) return;
+    this.audio.confirm();
     if (this.index >= INTRO_CARDS.length - 1) {
-      this.finish();
+      this.finish(false);
       return;
     }
     this.index += 1;
     this.renderCard();
   }
 
-  private finish(): void {
+  private finish(blip = true): void {
     if (this.advancing) return;
+    if (blip) this.audio.confirm();
     this.advancing = true;
 
     const current = this.registry.get(SELECTED_HERO_KEY);

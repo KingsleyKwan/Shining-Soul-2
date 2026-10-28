@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { GameAudio } from '../audio/GameAudio';
 import {
   SELECTED_STAGE_KEY,
   STAGES,
@@ -12,6 +13,7 @@ import * as SaveManager from '../systems/SaveManager';
  */
 export class StageSelectScene extends Phaser.Scene {
   private selected: StageId = 1;
+  private audio!: GameAudio;
   private unlocked: StageId[] = [1];
   private cards: {
     id: StageId;
@@ -27,6 +29,9 @@ export class StageSelectScene extends Phaser.Scene {
   create(): void {
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor('#142018');
+    this.audio = GameAudio.attach(this);
+    this.audio.startBgm('title');
+    this.input.once('pointerdown', () => this.audio.ensurePlaying());
 
     const saved = SaveManager.load();
     this.unlocked = SaveManager.getUnlockedStages(saved);
@@ -115,9 +120,11 @@ export class StageSelectScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.addMenuButton(width / 2 - 90, height - 28, '回城', 0x3a2a18, 0xffcc66, () => {
+      this.audio.confirm();
       this.scene.start('VillageScene');
     });
     this.addMenuButton(width / 2, height - 28, '返回選角', 0x1e3020, 0x4a7a4a, () => {
+      this.audio.confirm();
       this.scene.start('SelectScene');
     });
     this.addMenuButton(width / 2 + 90, height - 28, '開始', 0x2a4a28, 0x6dffa0, () => {
@@ -134,7 +141,10 @@ export class StageSelectScene extends Phaser.Scene {
     keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_TWO).on('down', () => this.trySelect(2));
     keyboard.on('keydown-ENTER', () => this.confirm());
     keyboard.on('keydown-SPACE', () => this.confirm());
-    keyboard.on('keydown-ESC', () => this.scene.start('SelectScene'));
+    keyboard.on('keydown-ESC', () => {
+      this.audio.confirm();
+      this.scene.start('SelectScene');
+    });
   }
 
   private trySelect(id: StageId): void {
@@ -189,6 +199,7 @@ export class StageSelectScene extends Phaser.Scene {
 
   private startStage(id: StageId): void {
     if (!this.unlocked.includes(id)) return;
+    this.audio.confirm();
     // Touch the stage def so a typo fails at compile time.
     void getStage(id);
     this.registry.set(SELECTED_STAGE_KEY, id);
