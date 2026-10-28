@@ -13,6 +13,8 @@ export type StageClearActions = {
   nextStage?: () => void;
   /** Button label for nextStage (default 下一關). */
   nextStageLabel?: string;
+  /** Return to village hub（葛蘭多爾城）— primary for early-game loop. */
+  returnVillage?: () => void;
 };
 
 const ROOT_ID = 'ss2-stageclear-overlay';
@@ -22,18 +24,20 @@ let actions: StageClearActions | null = null;
 let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 let busy = false;
 
-function styleButton(kind: 'primary' | 'secondary' | 'continue' | 'next'): string {
+function styleButton(kind: 'primary' | 'secondary' | 'continue' | 'next' | 'village'): string {
   const palette = {
     primary: ['#2a6a3a', '#6dffa0'],
     secondary: ['#3a3a4a', '#aaaacc'],
     continue: ['#3a4a28', '#ffe066'],
     next: ['#2a4a6a', '#66d0ff'],
+    village: ['#5a3a18', '#ffcc66'],
   } as const;
   const [bg, border] = palette[kind];
   return [
     'font: 14px monospace',
-    'padding: 10px 18px',
+    'padding: 12px 20px',
     'margin: 0 6px',
+    'min-height: 44px',
     'cursor: pointer',
     'border-radius: 6px',
     `background: ${bg}`,
@@ -51,6 +55,7 @@ export function showStageClearDom(next: StageClearActions): void {
   actions = next;
 
   const hasNext = typeof next.nextStage === 'function';
+  const hasVillage = typeof next.returnVillage === 'function';
   const nextLabel = next.nextStageLabel?.trim() || '下一關';
 
   const el = document.createElement('div');
@@ -84,15 +89,17 @@ export function showStageClearDom(next: StageClearActions): void {
   sub.style.cssText = 'font-size:14px;color:#fff6d0;margin-bottom:8px;';
 
   const hint = document.createElement('div');
-  hint.textContent = hasNext
-    ? 'N 下一關 · R 重新開始 · Esc 選角'
-    : 'R 重新開始 · Esc 選角';
+  const hintParts: string[] = [];
+  if (hasVillage) hintParts.push('H 回城');
+  if (hasNext) hintParts.push('N 下一關');
+  hintParts.push('R 重新開始', 'Esc 選角');
+  hint.textContent = hintParts.join(' · ');
   hint.style.cssText = 'font-size:12px;color:#c8d0d8;margin-bottom:20px;';
 
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:center;gap:8px;';
 
-  const fire = (kind: 'restart' | 'select' | 'continue' | 'next') => (ev: Event) => {
+  const fire = (kind: 'restart' | 'select' | 'continue' | 'next' | 'village') => (ev: Event) => {
     ev.preventDefault();
     ev.stopPropagation();
     if (busy || !actions) return;
@@ -100,8 +107,20 @@ export function showStageClearDom(next: StageClearActions): void {
     if (kind === 'restart') actions.restart();
     else if (kind === 'select') actions.select();
     else if (kind === 'next') actions.nextStage?.();
+    else if (kind === 'village') actions.returnVillage?.();
     else actions.continue();
   };
+
+  if (hasVillage) {
+    const btnVillage = document.createElement('button');
+    btnVillage.type = 'button';
+    btnVillage.textContent = '回城';
+    btnVillage.setAttribute('data-action', 'village');
+    btnVillage.setAttribute('data-testid', 'stageclear-village');
+    btnVillage.style.cssText = styleButton('village');
+    btnVillage.addEventListener('click', fire('village'));
+    row.appendChild(btnVillage);
+  }
 
   if (hasNext) {
     const btnNext = document.createElement('button');
@@ -159,7 +178,12 @@ export function showStageClearDom(next: StageClearActions): void {
 
   keyHandler = (e: KeyboardEvent) => {
     if (!actions || busy) return;
-    if (hasNext && (e.key === 'n' || e.key === 'N')) {
+    if (hasVillage && (e.key === 'h' || e.key === 'H')) {
+      e.preventDefault();
+      e.stopPropagation();
+      busy = true;
+      actions.returnVillage?.();
+    } else if (hasNext && (e.key === 'n' || e.key === 'N')) {
       e.preventDefault();
       e.stopPropagation();
       busy = true;
@@ -185,6 +209,7 @@ export function showStageClearDom(next: StageClearActions): void {
     select: () => actions?.select(),
     continue: () => actions?.continue(),
     nextStage: () => actions?.nextStage?.(),
+    returnVillage: () => actions?.returnVillage?.(),
     hide: hideStageClearDom,
   };
 }

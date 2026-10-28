@@ -3,7 +3,8 @@ import { HERO_ORDER, HEROES, SELECTED_HERO_KEY, type HeroId } from '../data/play
 import * as SaveManager from '../systems/SaveManager';
 
 /**
- * Title + character select. 1/2/3/4 or click → GameScene.
+ * Title + character select.
+ * New game → StoryScene; continue with seenIntro → VillageScene; else Story.
  */
 export class SelectScene extends Phaser.Scene {
   private selected: HeroId = 'eric';
@@ -194,25 +195,32 @@ export class SelectScene extends Phaser.Scene {
     container.on('pointerdown', () => onClick());
   }
 
-  /** Keep gold, gear, and unlocks; remember the highlighted hero → stage select. */
+  /** Keep gold, gear, and unlocks; remember the highlighted hero → story or village. */
   private confirm(): void {
     this.registry.set(SELECTED_HERO_KEY, this.selected);
     const existing = SaveManager.load();
-    SaveManager.save({
-      version: 1,
-      heroId: this.selected,
-      gold: existing?.gold ?? 0,
-      bag: existing?.bag ?? [],
-      equipped: existing?.equipped ?? {},
-      unlockedStages: SaveManager.getUnlockedStages(existing),
-    });
-    this.scene.start('StageSelectScene');
+    SaveManager.save(
+      SaveManager.mergeProfile(existing, {
+        heroId: this.selected,
+        gold: existing?.gold ?? 0,
+        bag: existing?.bag ?? [],
+        equipped: existing?.equipped ?? {},
+        unlockedStages: SaveManager.getUnlockedStages(existing),
+      }),
+    );
+    this.routeAfterSelect(SaveManager.getFlags(SaveManager.load()).seenIntro);
   }
 
-  /** Drop the profile and start the highlighted hero at 0 gold → stage select. */
+  /** Drop the profile and start the highlighted hero → intro story. */
   private startNewGame(): void {
     SaveManager.clear();
     this.registry.set(SELECTED_HERO_KEY, this.selected);
-    this.scene.start('StageSelectScene');
+    SaveManager.save(SaveManager.makeFreshSave(this.selected));
+    this.scene.start('StoryScene');
+  }
+
+  private routeAfterSelect(seenIntro: boolean): void {
+    if (seenIntro) this.scene.start('VillageScene');
+    else this.scene.start('StoryScene');
   }
 }

@@ -34,8 +34,8 @@ type RoomId = 'a' | 'c' | 'b' | 'boss';
 const ROOM_ORDER: RoomId[] = ['a', 'c', 'b', 'boss'];
 
 const ROOM_LABELS: Record<RoomId, string> = {
-  a: '營地大廳',
-  c: '戰鬥迴廊',
+  a: '要塞入口',
+  c: '哥不林迴廊',
   b: '寶箱房',
   boss: '蓋利隊長 · 競技場',
 };
@@ -427,14 +427,15 @@ export class GameScene extends Phaser.Scene {
       const heroId = SaveManager.isHeroId(current) ? current : 'eric';
       const snap = this.inventory.toJSON();
       const existing = SaveManager.load();
-      SaveManager.save({
-        version: 1,
-        heroId,
-        gold: this.gold,
-        bag: snap.bag,
-        equipped: snap.equipped,
-        unlockedStages: SaveManager.getUnlockedStages(existing),
-      });
+      SaveManager.save(
+        SaveManager.mergeProfile(existing, {
+          heroId,
+          gold: this.gold,
+          bag: snap.bag,
+          equipped: snap.equipped,
+          unlockedStages: SaveManager.getUnlockedStages(existing),
+        }),
+      );
     } catch (err) {
       console.warn('[SS2] persistSave skipped', err);
     }
@@ -510,12 +511,16 @@ export class GameScene extends Phaser.Scene {
     this.nuclearLeave('select');
   }
 
+  private backToVillage(): void {
+    this.nuclearLeave('village');
+  }
+
   /**
    * Leave GAME OVER via DOM / capture-key / update().
    * Browser setTimeout (not Phaser clocks). Select uses stop+start.
    * Restart: restart() then verify; if still inactive, stop + delayed start.
    */
-  private nuclearLeave(mode: 'restart' | 'select'): void {
+  private nuclearLeave(mode: 'restart' | 'select' | 'village'): void {
     if (this.leaving) return;
     this.leaving = true;
     this.stageClearVisible = false;
@@ -544,13 +549,13 @@ export class GameScene extends Phaser.Scene {
       if (hero !== undefined) game.registry.set(SELECTED_HERO_KEY, hero);
       if (stage !== undefined) game.registry.set(SELECTED_STAGE_KEY, stage);
 
-      if (mode === 'select') {
+      if (mode === 'select' || mode === 'village') {
         try {
           game.scene.stop('GameScene');
         } catch {
           /* ignore */
         }
-        game.scene.start('SelectScene');
+        game.scene.start(mode === 'village' ? 'VillageScene' : 'SelectScene');
         return;
       }
 
@@ -1065,11 +1070,16 @@ export class GameScene extends Phaser.Scene {
     if (nxt !== null) {
       this.unlockAndPersist(nxt);
     }
+    // Stage 1 clear → quest flag for village turn-in.
+    if (this.runStage === 1) {
+      this.markGoblinCleared();
+    }
 
     const actions: Parameters<typeof showStageClearDom>[0] = {
       restart: () => this.restartRun(),
       select: () => this.backToSelect(),
       continue: () => this.dismissStageClear(),
+      returnVillage: () => this.backToVillage(),
     };
     if (nxt !== null) {
       const nextName = getStage(nxt).nameZh;
@@ -1086,17 +1096,40 @@ export class GameScene extends Phaser.Scene {
       const heroId = SaveManager.isHeroId(current) ? current : 'eric';
       const snap = this.inventory.toJSON();
       const existing = SaveManager.load();
-      const base = {
-        version: 1 as const,
+      const base = SaveManager.mergeProfile(existing, {
         heroId,
         gold: this.gold,
         bag: snap.bag,
         equipped: snap.equipped,
         unlockedStages: SaveManager.getUnlockedStages(existing),
-      };
+      });
       SaveManager.save(SaveManager.unlockStage(base, stageId));
     } catch (err) {
       console.warn('[SS2] unlockAndPersist skipped', err);
+    }
+  }
+
+  /** Persist goblin fort clear for village King turn-in dialogue. */
+  private markGoblinCleared(): void {
+    try {
+      const current = this.registry.get(SELECTED_HERO_KEY);
+      const heroId = SaveManager.isHeroId(current) ? current : 'eric';
+      const snap = this.inventory.toJSON();
+      const existing = SaveManager.load();
+      SaveManager.save(
+        SaveManager.mergeProfile(existing, {
+          heroId,
+          gold: this.gold,
+          bag: snap.bag,
+          equipped: snap.equipped,
+          unlockedStages: SaveManager.getUnlockedStages(existing),
+          goblinCleared: true,
+          villageVisited: true,
+          seenIntro: true,
+        }),
+      );
+    } catch (err) {
+      console.warn('[SS2] markGoblinCleared skipped', err);
     }
   }
 
