@@ -21,6 +21,7 @@ import * as SaveManager from '../systems/SaveManager';
 import { InputState } from '../input/InputState';
 import { TouchControls } from '../ui/TouchControls';
 import { InventoryPanel } from '../ui/InventoryPanel';
+import { RunInfoHud } from '../ui/RunInfoHud';
 import { hideGameOverDom, showGameOverDom } from '../ui/GameOverDom';
 import { hideStageClearDom, showStageClearDom } from '../ui/StageClearDom';
 import { hideLootToastDom, showLootToastDom } from '../ui/LootToastDom';
@@ -62,6 +63,67 @@ const PASTE_HP: Record<RoomId, number> = {
 const DOOR_TRIGGER_GROW = 24;
 /** Soft room clamp, in pixels. Exit-door overlaps skip this so the trigger can fire. */
 const ROOM_CLAMP_INSET = 4;
+
+/**
+ * World zoom on the 480×320 view. 1.25 shows 384×256 of a 768×512 room,
+ * so the fighter fills more of the FIT canvas and setBounds still hides the void.
+ */
+const CAMERA_ZOOM = 1.25;
+
+const TILE = 16;
+/** Top lip is two tiles (cap + inner wall). Sides and the bottom lip are one. */
+const TOP_WALL = TILE * 2;
+/** East/west door rows and north/south door columns, in room-local pixels. */
+const DOOR_LOCAL_Y0 = 14 * TILE;
+const DOOR_LOCAL_Y1 = 18 * TILE;
+const DOOR_LOCAL_X0 = 22 * TILE;
+const DOOR_LOCAL_X1 = 24 * TILE;
+
+type DoorSides = { n: boolean; e: boolean; s: boolean; w: boolean };
+
+type DecorTheme = {
+  shadow: number;
+  skirt: number;
+  pattern: number;
+  patternAlt: number;
+  flame: number;
+  flameCore: number;
+  stone: number;
+  wood: number;
+  woodDark: number;
+  banner: number;
+  pole: number;
+};
+
+/** Absolute colors for the decoration pass. Tile tints do not multiply Graphics. */
+const DECOR_THEME: Record<StageId, DecorTheme> = {
+  1: {
+    shadow: 0x140e08,
+    skirt: 0xe6d090,
+    pattern: 0x3a3018,
+    patternAlt: 0xf0e2a8,
+    flame: 0xff6a1a,
+    flameCore: 0xffe090,
+    stone: 0x6a5840,
+    wood: 0x8a5a28,
+    woodDark: 0x3e2814,
+    banner: 0x8e3030,
+    pole: 0x3a2a18,
+  },
+  2: {
+    shadow: 0x060814,
+    skirt: 0xb8d4f4,
+    pattern: 0x142038,
+    patternAlt: 0xd0e4ff,
+    flame: 0x3ec0ff,
+    flameCore: 0xeef8ff,
+    stone: 0x4a5870,
+    wood: 0x3a4860,
+    woodDark: 0x1a2434,
+    banner: 0x3048a8,
+    pole: 0x1c2838,
+  },
+};
 
 type Rect = { x: number; y: number; w: number; h: number };
 type SpawnPoint = { x: number; y: number };
@@ -109,7 +171,7 @@ export class GameScene extends Phaser.Scene {
   private goldHud!: Phaser.GameObjects.Text;
   private gold = 0;
   private inventory = new Inventory();
-  private invHud!: Phaser.GameObjects.Text;
+  private runInfo?: RunInfoHud;
   private inventoryPanel!: InventoryPanel;
   private inventoryOpen = false;
   private chestOpened = false;
@@ -131,6 +193,8 @@ export class GameScene extends Phaser.Scene {
   private runStage: StageId = 1;
   /** Combat rooms that already played the clear sting this run. */
   private clearedRooms = new Set<RoomId>();
+  /** Rooms the camera has visited. The minimap starts dim outside this set. */
+  private exploredRooms = new Set<RoomId>();
   private rooms!: Record<RoomId, Rect>;
   private pathfinder!: TilePathfinder;
   private audio!: GameAudio;
@@ -170,6 +234,7 @@ export class GameScene extends Phaser.Scene {
     this.transitioning = false;
     this.currentRoom = 'a';
     this.clearedRooms.clear();
+    this.exploredRooms.clear();
     this.chestOpened = false;
     this.gold = 0;
     this.inventory = new Inventory();
@@ -225,6 +290,7 @@ export class GameScene extends Phaser.Scene {
 
     this.rooms = this.readRooms(map);
     this.spawns = this.readSpawns(map);
+    this.decorateRooms();
 
     const hero = getHero(this.registry.get(SELECTED_HERO_KEY) as string);
     this.player = new Player(this, this.spawns.player.x, this.spawns.player.y, hero);
@@ -271,95 +337,90 @@ export class GameScene extends Phaser.Scene {
     this.applyRoomCamera(startRoom);
 
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+    // Fractional zoom jitters when the camera snaps to whole pixels.
+    this.cameras.main.setRoundPixels(false);
+    this.addCameraVignette();
 
     this.touch = new TouchControls(this);
     this.inputState = new InputState(this);
 
-    const help = this.touch.enabled
+    const helpLine = this.touch.enabled
       ? '浮動搖桿 · 長按攻擊 · 技 · E · 包 · R · ☰'
       : 'WASD · 長按 Space/Z · Q · E 寶箱 · I/Tab 包 · M · R · Esc';
-
-    this.add
-      .text(8, 8, help, {
+    const help = this.add
+      .text(this.scale.width / 2, this.scale.height - 4, helpLine, {
         fontFamily: 'monospace',
-        fontSize: '10px',
+        fontSize: '8px',
         color: '#d8e8d8',
         backgroundColor: '#00000088',
-        padding: { x: 4, y: 3 },
+        padding: { x: 3, y: 1 },
       })
+      .setOrigin(0.5, 1)
       .setScrollFactor(0)
-      .setDepth(100);
+      .setDepth(110);
+    this.tweens.add({
+      targets: help,
+      alpha: 0,
+      delay: 4200,
+      duration: 400,
+      onComplete: () => help.destroy(),
+    });
 
+    const hudPad = { x: 3, y: 1 };
     this.hpHud = this.add
-      .text(8, 24, '', {
+      .text(6, 2, '', {
         fontFamily: 'monospace',
-        fontSize: '11px',
+        fontSize: '10px',
         color: '#ffd0d0',
-        backgroundColor: '#00000088',
-        padding: { x: 4, y: 3 },
+        backgroundColor: '#00000099',
+        padding: hudPad,
       })
       .setScrollFactor(0)
       .setDepth(100);
     this.refreshHpHud(this.player.hp, this.player.maxHp);
 
     this.skillHud = this.add
-      .text(8, 40, '', {
+      .text(6, 16, '', {
         fontFamily: 'monospace',
-        fontSize: '10px',
+        fontSize: '8px',
         color: '#ffffff',
-        backgroundColor: '#00000088',
-        padding: { x: 4, y: 3 },
+        backgroundColor: '#00000099',
+        padding: hudPad,
       })
       .setScrollFactor(0)
       .setDepth(100);
     this.refreshSkillHud();
 
     this.roomHud = this.add
-      .text(8, 56, '', {
+      .text(6, 28, '', {
         fontFamily: 'monospace',
-        fontSize: '10px',
+        fontSize: '8px',
         color: stageDef.visual.nameplateColor,
-        backgroundColor: '#00000088',
-        padding: { x: 4, y: 3 },
+        backgroundColor: '#00000099',
+        padding: hudPad,
       })
       .setScrollFactor(0)
       .setDepth(100);
     this.refreshRoomHud();
 
-    this.add
-      .text(8, 72, `職業 ${this.player.hero.label}`, {
-        fontFamily: 'monospace',
-        fontSize: '10px',
-        color: '#d0ffd0',
-        backgroundColor: '#00000088',
-        padding: { x: 4, y: 3 },
-      })
-      .setScrollFactor(0)
-      .setDepth(100);
-
     this.goldHud = this.add
-      .text(8, 88, '', {
+      .text(6, 40, '', {
         fontFamily: 'monospace',
-        fontSize: '10px',
+        fontSize: '8px',
         color: '#ffe066',
-        backgroundColor: '#00000088',
-        padding: { x: 4, y: 3 },
+        backgroundColor: '#00000099',
+        padding: hudPad,
       })
       .setScrollFactor(0)
       .setDepth(100);
     this.refreshGoldHud();
 
-    this.invHud = this.add
-      .text(8, 120, '', {
-        fontFamily: 'monospace',
-        fontSize: '9px',
-        color: '#c8e8ff',
-        backgroundColor: '#00000088',
-        padding: { x: 4, y: 3 },
-      })
-      .setScrollFactor(0)
-      .setDepth(100);
-    this.refreshInvHud();
+    this.runInfo = new RunInfoHud(this, { touch: this.touch.enabled });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.runInfo?.destroy();
+      this.runInfo = undefined;
+    });
+    this.refreshRunInfo();
 
     this.inventoryPanel = new InventoryPanel(this, {
       onEquip: (uid) => this.equipBagItem(uid),
@@ -383,12 +444,12 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     this.muteHud = this.add
-      .text(8, 104, '', {
+      .text(6, 52, '', {
         fontFamily: 'monospace',
-        fontSize: '10px',
+        fontSize: '8px',
         color: '#aaaacc',
-        backgroundColor: '#00000088',
-        padding: { x: 4, y: 3 },
+        backgroundColor: '#00000099',
+        padding: { x: 3, y: 1 },
       })
       .setScrollFactor(0)
       .setDepth(100);
@@ -439,6 +500,7 @@ export class GameScene extends Phaser.Scene {
     this.player.applyGearMods(this.inventory.getMods());
   }
 
+  /** Gold and gear only. Must not restart the scene or rebuild the dungeon. */
   private persistSave(): void {
     try {
       const current = this.registry.get(SELECTED_HERO_KEY);
@@ -461,7 +523,8 @@ export class GameScene extends Phaser.Scene {
 
   private refreshMuteHud(): void {
     const muted = this.audio?.isMuted() ?? false;
-    this.muteHud?.setText(muted ? '靜音 (M)' : '音效開 (M)');
+    const seed = this.runSeed ? ` · #${this.runSeed}` : '';
+    this.muteHud?.setText(muted ? `靜音 (M)${seed}` : `音效開 (M)${seed}`);
     this.muteHud?.setColor(muted ? '#ff8888' : '#aaaacc');
   }
 
@@ -470,8 +533,10 @@ export class GameScene extends Phaser.Scene {
       this.inputState.update(this.touch.poll());
       this.refreshSkillHud();
 
-      // Always process restart/menu — including during GAME OVER.
-      if (this.inputState.restartPressed) {
+      // R / touch R restarts, including during GAME OVER — but never while
+      // the bag is open. Equipping used to fall through the old pass-through
+      // overlay onto the R button and reload the stage.
+      if (!this.inventoryOpen && this.inputState.restartPressed) {
         this.restartRun();
         return;
       }
@@ -775,10 +840,23 @@ export class GameScene extends Phaser.Scene {
     this.refreshInvHud();
   }
 
+  /** Gear summary only. Does not reload the stage. */
   private refreshInvHud(): void {
-    const line = this.inventory.hudLine();
-    const mods = this.inventory.modsHudLine();
-    this.invHud?.setText(mods ? `${line}\n${mods}` : line);
+    this.runInfo?.syncGear(this.inventory);
+  }
+
+  private refreshRunInfo(): void {
+    const hud = this.runInfo;
+    if (!hud || !this.rooms) return;
+    hud.syncMap({
+      rooms: this.rooms,
+      current: this.currentRoom,
+      explored: this.exploredRooms,
+      cleared: this.clearedRooms,
+      bossDown: this.bossDefeated,
+      cold: this.runStage === 2,
+    });
+    hud.syncGear(this.inventory);
   }
 
   private setInventoryOpen(open: boolean): void {
@@ -795,12 +873,9 @@ export class GameScene extends Phaser.Scene {
       } catch {
         /* ignore */
       }
-      // Panel sits right of the left HUD; hide bag/mods line so it is not clipped under dim.
-      this.invHud?.setVisible(false);
       this.inventoryPanel.open(this.inventory);
     } else {
       this.inventoryPanel.close();
-      this.invHud?.setVisible(true);
       this.refreshInvHud();
       // Do not resume if GAME OVER / stage clear already owns the pause.
       if (!this.gameOver && !this.stageClearVisible) {
@@ -813,6 +888,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Bag → slot, reapply mods, save, refresh. Never restarts the scene. */
   private equipBagItem(uid: string): void {
     const before = this.inventory.getBag().find((it) => it.uid === uid);
     if (!this.inventory.equipFromBag(uid)) return;
@@ -828,6 +904,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Slot → bag, reapply mods, save, refresh. Never restarts the scene. */
   private unequipSlot(slot: EquipSlot): void {
     const prev = this.inventory.getEquipped(slot);
     if (!this.inventory.unequip(slot)) return;
@@ -844,7 +921,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshGoldHud(): void {
-    this.goldHud?.setText(`金幣 ${this.gold}`);
+    const hero = this.player?.hero.label ?? '';
+    this.goldHud?.setText(hero ? `金幣 ${this.gold} · ${hero}` : `金幣 ${this.gold}`);
   }
 
   private showLootToast(msg: string, color?: string): void {
@@ -898,10 +976,15 @@ export class GameScene extends Phaser.Scene {
 
   private applyRoomCamera(room: RoomId): void {
     this.currentRoom = room;
+    this.exploredRooms.add(room);
     const r = this.rooms[room];
-    this.cameras.main.setBounds(r.x, r.y, r.w, r.h);
+    const cam = this.cameras.main;
+    cam.setRoundPixels(false);
+    cam.setZoom(CAMERA_ZOOM);
+    cam.setBounds(r.x, r.y, r.w, r.h);
     this.syncHostileRooms();
     this.syncRoomBgm();
+    this.refreshRunInfo();
   }
 
   /** Stage bed, or the boss loop once Gully's room is the one on screen. */
@@ -933,6 +1016,69 @@ export class GameScene extends Phaser.Scene {
     );
     fog.setDepth(2);
     fog.setScrollFactor(1);
+  }
+
+  /** Screen-fixed frame so a room does not read as a bare rectangle in the void. */
+  private addCameraVignette(): void {
+    const g = this.add.graphics().setScrollFactor(0).setDepth(50);
+    const w = this.scale.width;
+    const h = this.scale.height;
+    const bands = 6;
+    const step = 5;
+    for (let i = 0; i < bands; i++) {
+      const alpha = 0.18 * (1 - i / bands);
+      g.fillStyle(0x000000, alpha);
+      const t = i * step;
+      g.fillRect(0, t, w, step);
+      g.fillRect(0, h - t - step, w, step);
+      g.fillRect(t, 0, step, h);
+      g.fillRect(w - t - step, 0, step, h);
+    }
+  }
+
+  /**
+   * Floor depth pass after the tile layers exist: skirting, wall shadows,
+   * a sparse pattern, and corner props. Collision and doors stay on the tilemap.
+   */
+  private decorateRooms(): void {
+    const theme = DECOR_THEME[this.runStage];
+    const floor = this.add.graphics().setDepth(0.6);
+    const props = this.add.graphics().setDepth(1.4);
+    const sides = this.roomDoorSides();
+    for (const id of ROOM_ORDER) {
+      const rng = mulberry32((this.runSeed ^ decorSalt(id)) >>> 0);
+      paintRoomDecor(floor, props, id, this.rooms[id], theme, sides[id], rng);
+    }
+  }
+
+  /** Which walls of each room are a doorway, so skirting does not seal the opening. */
+  private roomDoorSides(): Record<RoomId, DoorSides> {
+    const out = {} as Record<RoomId, DoorSides>;
+    for (const id of ROOM_ORDER) out[id] = { n: false, e: false, s: false, w: false };
+    for (let i = 0; i < ROOM_ORDER.length; i++) {
+      for (let j = i + 1; j < ROOM_ORDER.length; j++) {
+        const a = ROOM_ORDER[i]!;
+        const b = ROOM_ORDER[j]!;
+        const ra = this.rooms[a];
+        const rb = this.rooms[b];
+        const dx = rb.x - ra.x;
+        const dy = rb.y - ra.y;
+        if (dy === 0 && dx === ra.w) {
+          out[a].e = true;
+          out[b].w = true;
+        } else if (dy === 0 && dx === -ra.w) {
+          out[a].w = true;
+          out[b].e = true;
+        } else if (dx === 0 && dy === ra.h) {
+          out[a].s = true;
+          out[b].n = true;
+        } else if (dx === 0 && dy === -ra.h) {
+          out[a].n = true;
+          out[b].s = true;
+        }
+      }
+    }
+    return out;
   }
 
   /** Large stage name, then fade. Not interactive, so movement is never blocked. */
@@ -975,6 +1121,7 @@ export class GameScene extends Phaser.Scene {
     if (!any) return;
     this.clearedRooms.add(room);
     this.audio?.roomClear();
+    this.refreshRunInfo();
   }
 
   /** Park Pastes and the boss unless their spawn room is on screen. */
@@ -1096,7 +1243,6 @@ export class GameScene extends Phaser.Scene {
     const roomName = ROOM_LABELS[this.runStage][this.currentRoom] ?? this.currentRoom;
     let label = `${stageName} · ${roomName}`;
     if (this.currentRoom === 'boss' && this.bossDefeated) label += ' · 出口已開';
-    label += ` · #${this.runSeed}`;
     this.roomHud?.setText(label);
   }
 
@@ -1106,6 +1252,7 @@ export class GameScene extends Phaser.Scene {
     this.audio.bossDefeat();
     this.activateExit();
     this.refreshRoomHud();
+    this.refreshRunInfo();
     this.showLootToast('蓋利隊長已擊破 · 出口已開啟');
   }
 
@@ -1454,4 +1601,230 @@ export class GameScene extends Phaser.Scene {
       if (landed) this.hitFeedback.onPlayerLandedHit();
     });
   }
+}
+
+function decorSalt(id: RoomId): number {
+  if (id === 'a') return 0x41a1;
+  if (id === 'c') return 0xc0c0;
+  if (id === 'b') return 0xb0b1;
+  return 0xb055;
+}
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function gapSpans(
+  start: number,
+  end: number,
+  gap0: number,
+  gap1: number,
+  open: boolean,
+): Array<[number, number]> {
+  if (!open || gap1 <= start || gap0 >= end) return [[start, end]];
+  const a = Math.max(start, gap0);
+  const b = Math.min(end, gap1);
+  const out: Array<[number, number]> = [];
+  if (a > start) out.push([start, a]);
+  if (b < end) out.push([b, end]);
+  return out;
+}
+
+function onDoorCross(lx: number, ly: number): boolean {
+  const vertical = lx >= 20 && lx <= 24 && ly >= 2 && ly <= 30;
+  const horizontal = ly >= 13 && ly <= 18 && lx >= 1 && lx <= 46;
+  return vertical || horizontal;
+}
+
+function paintHBands(
+  g: Phaser.GameObjects.Graphics,
+  x0: number,
+  x1: number,
+  y: number,
+  h: number,
+  gap0: number,
+  gap1: number,
+  open: boolean,
+): void {
+  for (const [a, b] of gapSpans(x0, x1, gap0, gap1, open)) {
+    if (b - a > 0) g.fillRect(a, y, b - a, h);
+  }
+}
+
+function paintVBands(
+  g: Phaser.GameObjects.Graphics,
+  y0: number,
+  y1: number,
+  x: number,
+  w: number,
+  gap0: number,
+  gap1: number,
+  open: boolean,
+): void {
+  for (const [a, b] of gapSpans(y0, y1, gap0, gap1, open)) {
+    if (b - a > 0) g.fillRect(x, a, w, b - a);
+  }
+}
+
+/**
+ * Inner edge, drop shadow, sparse floor marks, and corner props.
+ * Props stay off the door cross so lanes MapGenerator left open stay open.
+ */
+function paintRoomDecor(
+  floor: Phaser.GameObjects.Graphics,
+  props: Phaser.GameObjects.Graphics,
+  id: RoomId,
+  room: Rect,
+  theme: DecorTheme,
+  sides: DoorSides,
+  rng: () => number,
+): void {
+  const ix = room.x + TILE;
+  const iy = room.y + TOP_WALL;
+  const right = room.x + room.w - TILE;
+  const bottom = room.y + room.h - TILE;
+  const gapX0 = room.x + DOOR_LOCAL_X0;
+  const gapX1 = room.x + DOOR_LOCAL_X1;
+  const gapY0 = room.y + DOOR_LOCAL_Y0;
+  const gapY1 = room.y + DOOR_LOCAL_Y1;
+
+  const step = id === 'boss' ? 28 : 44;
+  const keep = id === 'boss' ? 0.72 : 0.42;
+  for (let y = iy + 22; y < bottom - 16; y += step) {
+    for (let x = ix + 22; x < right - 16; x += step) {
+      if (rng() > keep) continue;
+      const lx = (x - room.x) / TILE;
+      const ly = (y - room.y) / TILE;
+      if (onDoorCross(lx, ly)) continue;
+      const px = x + Math.floor(rng() * 7) - 3;
+      const py = y + Math.floor(rng() * 7) - 3;
+      const kind = rng();
+      if (kind < 0.34) {
+        floor.lineStyle(1, theme.patternAlt, 0.22);
+        floor.lineBetween(px, py - 3, px + 3, py);
+        floor.lineBetween(px + 3, py, px, py + 3);
+        floor.lineBetween(px, py + 3, px - 3, py);
+        floor.lineBetween(px - 3, py, px, py - 3);
+      } else if (kind < 0.67) {
+        floor.lineStyle(1, theme.pattern, 0.35);
+        floor.lineBetween(px, py, px + 6, py + 2);
+        floor.lineBetween(px + 6, py + 2, px + 3, py + 6);
+      } else {
+        floor.fillStyle(theme.patternAlt, 0.2);
+        floor.fillRect(px, py, 2, 2);
+        floor.fillStyle(theme.pattern, 0.28);
+        floor.fillRect(px + 4, py + 1, 1, 1);
+        floor.fillRect(px + 1, py + 4, 1, 1);
+      }
+    }
+  }
+
+  floor.fillStyle(theme.shadow, 0.32);
+  paintHBands(floor, ix, right, iy, 8, gapX0, gapX1, sides.n);
+  paintHBands(floor, ix, right, bottom - 7, 7, gapX0, gapX1, sides.s);
+  paintVBands(floor, iy, bottom, ix, 7, gapY0, gapY1, sides.w);
+  paintVBands(floor, iy, bottom, right - 7, 7, gapY0, gapY1, sides.e);
+
+  floor.fillStyle(theme.skirt, 0.55);
+  paintHBands(floor, ix, right, iy, 2, gapX0, gapX1, sides.n);
+  paintHBands(floor, ix, right, bottom - 2, 2, gapX0, gapX1, sides.s);
+  paintVBands(floor, iy, bottom, ix, 2, gapY0, gapY1, sides.w);
+  paintVBands(floor, iy, bottom, right - 2, 2, gapY0, gapY1, sides.e);
+
+  const inset = 18;
+  const corners = [
+    { x: ix + inset, y: iy + inset },
+    { x: right - inset, y: iy + inset },
+    { x: ix + inset, y: bottom - inset },
+    { x: right - inset, y: bottom - inset },
+  ];
+  const order = [0, 1, 2, 3];
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = order[i]!;
+    order[i] = order[j]!;
+    order[j] = tmp;
+  }
+  const count = id === 'boss' ? 4 : 2;
+  const kinds: Array<'brazier' | 'crate' | 'banner'> =
+    id === 'boss' ? ['brazier', 'banner', 'brazier', 'crate'] : ['brazier', 'crate', 'banner'];
+  for (let i = 0; i < count; i++) {
+    const corner = corners[order[i]!]!;
+    const kind = kinds[i % kinds.length]!;
+    if (kind === 'brazier') drawBrazier(props, corner.x, corner.y, theme);
+    else if (kind === 'crate') drawCrate(props, corner.x, corner.y, theme);
+    else drawBanner(props, corner.x, corner.y, theme);
+  }
+  if (id === 'boss') {
+    drawBrazier(props, ix + 78, iy + 22, theme);
+    drawBrazier(props, right - 78, iy + 22, theme);
+    drawBanner(props, ix + 36, bottom - 36, theme);
+    drawCrate(props, right - 40, bottom - 34, theme);
+  }
+}
+
+function drawBrazier(
+  g: Phaser.GameObjects.Graphics,
+  x: number,
+  y: number,
+  theme: DecorTheme,
+): void {
+  const ix = Math.round(x);
+  const iy = Math.round(y);
+  g.fillStyle(theme.stone, 1);
+  g.fillRect(ix - 5, iy - 2, 10, 5);
+  g.fillStyle(0x000000, 0.35);
+  g.fillRect(ix - 3, iy - 1, 6, 2);
+  g.fillStyle(theme.pole, 1);
+  g.fillRect(ix - 4, iy + 3, 2, 3);
+  g.fillRect(ix + 2, iy + 3, 2, 3);
+  g.fillStyle(theme.flame, 0.95);
+  g.fillRect(ix - 2, iy - 8, 4, 6);
+  g.fillStyle(theme.flameCore, 1);
+  g.fillRect(ix - 1, iy - 6, 2, 3);
+  g.fillStyle(theme.flame, 0.28);
+  g.fillCircle(ix, iy - 6, 5);
+}
+
+function drawCrate(
+  g: Phaser.GameObjects.Graphics,
+  x: number,
+  y: number,
+  theme: DecorTheme,
+): void {
+  const ix = Math.round(x);
+  const iy = Math.round(y);
+  g.fillStyle(theme.wood, 1);
+  g.fillRect(ix - 5, iy - 5, 11, 10);
+  g.fillStyle(theme.woodDark, 1);
+  g.fillRect(ix - 5, iy - 5, 11, 2);
+  g.fillRect(ix - 5, iy + 3, 11, 2);
+  g.lineStyle(1, theme.woodDark, 0.9);
+  g.lineBetween(ix - 4, iy - 3, ix + 4, iy + 2);
+  g.lineBetween(ix + 4, iy - 3, ix - 4, iy + 2);
+}
+
+function drawBanner(
+  g: Phaser.GameObjects.Graphics,
+  x: number,
+  y: number,
+  theme: DecorTheme,
+): void {
+  const ix = Math.round(x);
+  const iy = Math.round(y);
+  g.fillStyle(theme.pole, 1);
+  g.fillRect(ix - 1, iy - 14, 2, 16);
+  g.fillStyle(theme.banner, 1);
+  g.fillRect(ix + 1, iy - 13, 8, 6);
+  g.fillStyle(0x000000, 0.28);
+  g.fillRect(ix + 1, iy - 9, 8, 1);
+  g.fillStyle(theme.banner, 1);
+  g.fillTriangle(ix + 1, iy - 7, ix + 5, iy - 4, ix + 9, iy - 7);
 }

@@ -55,29 +55,47 @@ def px(img, x, y, c):
 
 
 def draw_floor(img, ox, oy, variant=0):
-    base = (72, 84, 104, 255) if variant == 0 else (78, 90, 110, 255)
-    hi = (88, 100, 120, 255) if variant == 0 else (94, 106, 126, 255)
-    lo = (56, 66, 84, 255) if variant == 0 else (60, 70, 88, 255)
+    """Neutral stone so stage tints still read. Variant 1 is a touch lighter."""
+    base = (70, 82, 100, 255) if variant == 0 else (82, 94, 112, 255)
+    hi = (98, 112, 132, 255) if variant == 0 else (110, 124, 144, 255)
+    lo = (46, 54, 70, 255) if variant == 0 else (52, 60, 76, 255)
+    grit = (86, 96, 114, 255) if variant == 0 else (96, 108, 126, 255)
     for y in range(TILE):
         for x in range(TILE):
-            n = (x * 3 + y * 7 + variant * 11) % 5
+            n = (x * 3 + y * 7 + variant * 11) % 7
             c = base
             if n == 0:
                 c = hi
-            if n == 4:
+            elif n == 1:
+                c = grit
+            elif n >= 5:
                 c = lo
             px(img, ox + x, oy + y, c)
+    # Bevel so neighboring tiles don't melt into one flat field.
     for i in range(TILE):
         px(img, ox + i, oy, lo)
         px(img, ox, oy + i, lo)
+        px(img, ox + i, oy + TILE - 1, hi)
+        px(img, ox + TILE - 1, oy + i, hi)
+    # A short crack / chip, different per variant, still inside the tile.
+    if variant == 0:
+        for i, (dx, dy) in enumerate(((4, 6), (5, 7), (6, 7), (7, 8), (8, 9))):
+            px(img, ox + dx, oy + dy, lo if i % 2 == 0 else (32, 36, 48, 255))
+        px(img, ox + 11, oy + 3, hi)
+        px(img, ox + 12, oy + 4, grit)
+    else:
+        for dx, dy in ((3, 11), (4, 11), (5, 12), (6, 12), (10, 5), (11, 4)):
+            px(img, ox + dx, oy + dy, lo)
+        px(img, ox + 8, oy + 8, hi)
+        px(img, ox + 9, oy + 8, grit)
 
 
 def draw_wall(img, ox, oy, kind="solid"):
-    mortar = (28, 30, 42, 255)
-    brick_a = (64, 68, 88, 255)
-    brick_b = (74, 78, 98, 255)
-    brick_hi = (96, 100, 120, 255)
-    brick_lo = (44, 48, 64, 255)
+    mortar = (22, 24, 34, 255)
+    brick_a = (68, 72, 92, 255)
+    brick_b = (84, 88, 108, 255)
+    brick_hi = (118, 122, 142, 255)
+    brick_lo = (36, 40, 54, 255)
     for y in range(TILE):
         for x in range(TILE):
             px(img, ox + x, oy + y, mortar)
@@ -90,38 +108,67 @@ def draw_wall(img, ox, oy, kind="solid"):
                     c = brick_a if ((x + by) % 2 == 0) else brick_b
                     if by == ry:
                         c = brick_hi
-                    if by == ry + rh - 1:
+                    if by == ry + rh - 2:
                         c = brick_lo
+                    # A chip so bricks are not a flat fill.
+                    if (bx + by + xoff) % 9 == 0:
+                        c = brick_hi
                     px(img, ox + bx, oy + by, c)
             x += bw
     if kind == "top":
+        cap = (16, 18, 28, 255)
+        lip = (140, 146, 168, 255)
         for x in range(TILE):
             for y in range(3):
-                px(img, ox + x, oy + y, (22, 24, 36, 255))
-            px(img, ox + x, oy + 3, brick_hi)
+                px(img, ox + x, oy + y, cap)
+            px(img, ox + x, oy + 3, lip)
+            if x % 4 == 0:
+                px(img, ox + x, oy + 1, (40, 44, 60, 255))
     if kind == "pillar":
         for y in range(TILE):
+            px(img, ox + 1, oy + y, brick_lo)
             px(img, ox + 2, oy + y, brick_hi)
+            px(img, ox + 3, oy + y, brick_a)
+            px(img, ox + TILE - 4, oy + y, brick_b)
             px(img, ox + TILE - 3, oy + y, brick_lo)
+            px(img, ox + TILE - 2, oy + y, (18, 20, 30, 255))
+        for x in range(4, TILE - 4):
+            px(img, ox + x, oy + 2, brick_hi)
+            px(img, ox + x, oy + TILE - 3, brick_lo)
 
 
 def draw_void(img, ox, oy):
     for y in range(TILE):
         for x in range(TILE):
-            px(img, ox + x, oy + y, (8, 10, 18, 255))
+            n = (x * 5 + y * 3) % 6
+            c = (8, 10, 16, 255)
+            if n == 0:
+                c = (14, 16, 24, 255)
+            elif n == 4:
+                c = (4, 6, 12, 255)
+            px(img, ox + x, oy + y, c)
 
 
 def draw_door(img, ox, oy):
     draw_floor(img, ox, oy, 1)
-    wood = (92, 64, 40, 255)
-    wood_hi = (120, 88, 52, 255)
-    iron = (160, 160, 180, 255)
+    wood = (96, 62, 36, 255)
+    wood_hi = (132, 92, 52, 255)
+    wood_lo = (62, 40, 24, 255)
+    iron = (176, 176, 196, 255)
+    iron_lo = (96, 96, 116, 255)
     for y in range(2, TILE - 1):
         for x in range(3, TILE - 3):
             px(img, ox + x, oy + y, wood_hi if (x + y) % 2 == 0 else wood)
+    for y in range(3, TILE - 2):
+        px(img, ox + 3, oy + y, wood_lo)
+        px(img, ox + TILE - 4, oy + y, wood_hi)
     for x in range(3, TILE - 3):
         px(img, ox + x, oy + 2, iron)
-    px(img, ox + TILE - 5, oy + TILE // 2, iron)
+        px(img, ox + x, oy + 3, iron_lo)
+        px(img, ox + x, oy + TILE - 3, iron)
+    px(img, ox + TILE - 6, oy + TILE // 2, iron)
+    px(img, ox + TILE - 6, oy + TILE // 2 + 1, iron_lo)
+    px(img, ox + TILE - 5, oy + TILE // 2, iron_lo)
 
 
 def fill_room_shell(setg, x0, x1, y0, y1, floor="checker"):

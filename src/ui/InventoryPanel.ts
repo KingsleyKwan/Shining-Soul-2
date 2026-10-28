@@ -52,8 +52,9 @@ const MOD_KEYS: Array<{ key: keyof ItemMods; label: string }> = [
  *
  * Redesign: two-line rows with attribute chips, tap-to-open detail card
  * (desktop: left of panel; narrow: expands under selected row), bottom-sheet
- * layout on small viewports. Backdrop pointer-events:none so canvas 「包」
- * still toggles closed.
+ * layout on small viewports. The dimmed backdrop captures pointers and
+ * closes the panel, so touches cannot fall through onto R. I／Tab still
+ * toggle through InputState.
  */
 export class InventoryPanel {
   private handlers: InventoryPanelHandlers;
@@ -220,7 +221,7 @@ export class InventoryPanel {
 
     const hint = document.createElement('div');
     hint.className = 'ss2-inv-footer';
-    hint.textContent = '點列開詳情 · 點掣裝備／卸下 · I／Tab／包 關閉';
+    hint.textContent = '點列開詳情 · 點掣裝備／卸下 · 點空白／I／Tab 關閉';
 
     panel.appendChild(handle);
     panel.appendChild(header);
@@ -235,6 +236,13 @@ export class InventoryPanel {
     panel.addEventListener('click', (e) => e.stopPropagation());
     desktopDetailHost.addEventListener('pointerdown', (e) => e.stopPropagation());
     desktopDetailHost.addEventListener('click', (e) => e.stopPropagation());
+
+    // Dimmed backdrop only — the panel and detail card stop propagation.
+    root.addEventListener('pointerdown', (ev) => {
+      if (ev.target !== root) return;
+      ev.preventDefault();
+      this.handlers.onClose();
+    });
 
     root.appendChild(desktopDetailHost);
     root.appendChild(panel);
@@ -692,7 +700,7 @@ function ensureStyles(): void {
   padding: 24px max(16px, 2vw) 24px max(120px, 18vw);
   box-sizing: border-box;
   background: rgba(0,0,0,0.45);
-  pointer-events: none;
+  pointer-events: auto;
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
