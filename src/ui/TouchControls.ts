@@ -124,6 +124,19 @@ export class TouchControls {
     this.layout();
   }
 
+  /** Game objects that must render on the unzoomed UI camera. */
+  uiObjects(): Phaser.GameObjects.GameObject[] {
+    if (!this.enabled) return [];
+    const out: Phaser.GameObjects.GameObject[] = [];
+    if (this.stickZone) out.push(this.stickZone);
+    if (this.stickBase) out.push(this.stickBase);
+    if (this.thumb) out.push(this.thumb);
+    for (const btn of this.buttons) {
+      out.push(btn.circle, btn.label);
+    }
+    return out;
+  }
+
   /** Reflow stick zone + action buttons to the live canvas (EXPAND / rotate). */
   layout(): void {
     if (!this.enabled) return;

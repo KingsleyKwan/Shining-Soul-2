@@ -80,6 +80,11 @@ export class RunInfoHud {
     this.drawGearChrome();
   }
 
+  /** Game objects that must render on the unzoomed UI camera. */
+  uiObjects(): Phaser.GameObjects.GameObject[] {
+    return [this.mapGfx, this.gearBg, this.gearText, ...ROOM_IDS.map((id) => this.labels[id])];
+  }
+
   /** Reposition gear / minimap after EXPAND canvas size changes. */
   layout(touch: boolean): void {
     this.touch = touch;

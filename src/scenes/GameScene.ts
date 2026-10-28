@@ -201,6 +201,10 @@ export class GameScene extends Phaser.Scene {
   private audio!: GameAudio;
   private hitFeedback!: HitFeedback;
   private muteHud!: Phaser.GameObjects.Text;
+  /** Unzoomed overlay camera — keeps HUD/touch in viewport while main cover-zooms. */
+  private uiCam!: Phaser.Cameras.Scene2D.Camera;
+  private readonly uiObjects = new Set<Phaser.GameObjects.GameObject>();
+  private vignetteGfx?: Phaser.GameObjects.Graphics;
   private spawns!: {
     player: SpawnPoint;
     /** Arrival points keyed by Tiled object name (spawn_a, spawn_c_west, …). */
@@ -227,6 +231,8 @@ export class GameScene extends Phaser.Scene {
       hideStageClearDom();
       hideLootToastDom();
     });
+    // World camera may cover-zoom; HUD/touch live on a separate zoom-1 camera.
+    this.bootstrapUiCamera();
     this.gameOver = false;
     this.bossDefeated = false;
     this.stageClearVisible = false;
@@ -359,6 +365,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setScrollFactor(0)
       .setDepth(110);
+    this.promoteUi(help);
     this.tweens.add({
       targets: help,
       alpha: 0,
@@ -424,7 +431,9 @@ export class GameScene extends Phaser.Scene {
     this.refreshRunInfo();
 
     const onGameResize = (): void => {
+      this.ensureUiCamera();
       if (this.currentRoom) this.applyRoomCamera(this.currentRoom);
+      this.redrawVignette();
       this.touch?.layout();
       this.runInfo?.layout(this.touch?.enabled ?? false);
       this.runInfo && this.refreshRunInfo();
@@ -466,6 +475,18 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(100);
     this.refreshMuteHud();
+
+    // Fixed HUD + touch stay on uiCam (zoom 1); main may cover-zoom the world.
+    this.promoteUi(
+      this.hpHud,
+      this.skillHud,
+      this.roomHud,
+      this.goldHud,
+      this.muteHud,
+      this.vignetteGfx,
+      ...this.touch.uiObjects(),
+      ...this.runInfo.uiObjects(),
+    );
 
     this.showStageNameplate();
     // Unlock / resume after the first gesture (browser autoplay policy).
@@ -1041,11 +1062,66 @@ export class GameScene extends Phaser.Scene {
     fog.setScrollFactor(1);
   }
 
+  /**
+   * Main camera cover-zooms the room so EXPAND portrait never shows void.
+   * A second camera at zoom 1 owns scrollFactor-0 HUD / touch so they stay on-screen.
+   */
+  private bootstrapUiCamera(): void {
+    this.uiObjects.clear();
+    this.ensureUiCamera();
+    // DisplayList emits ADDED_TO_SCENE (not scene.sys.events).
+    this.children.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, this.onAddedToScene, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.children.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.onAddedToScene, this);
+    });
+  }
+
+  private ensureUiCamera(): void {
+    const w = Math.max(1, this.scale.width);
+    const h = Math.max(1, this.scale.height);
+    const alive = !!this.uiCam && this.cameras.cameras.includes(this.uiCam);
+    if (!alive) {
+      this.uiCam = this.cameras.add(0, 0, w, h);
+      this.uiCam.setName('ui');
+    } else {
+      this.uiCam.setSize(w, h);
+    }
+    this.uiCam.setScroll(0, 0);
+    this.uiCam.setZoom(1);
+    this.uiCam.roundPixels = false;
+  }
+
+  private onAddedToScene(go: Phaser.GameObjects.GameObject): void {
+    if (!this.uiCam || this.uiObjects.has(go)) return;
+    this.uiCam.ignore(go);
+  }
+
+  /** Route objects to the unzoomed UI camera only (main ignores them). */
+  private promoteUi(
+    ...objs: Array<Phaser.GameObjects.GameObject | undefined | null>
+  ): void {
+    if (!this.uiCam) return;
+    const bit = 1 << this.uiCam.id;
+    for (const o of objs) {
+      if (!o) continue;
+      this.uiObjects.add(o);
+      this.cameras.main.ignore(o);
+      o.cameraFilter &= ~bit;
+    }
+  }
+
   /** Screen-fixed frame so a room does not read as a bare rectangle in the void. */
   private addCameraVignette(): void {
-    const g = this.add.graphics().setScrollFactor(0).setDepth(50);
+    this.vignetteGfx = this.add.graphics().setScrollFactor(0).setDepth(50);
+    this.redrawVignette();
+  }
+
+  private redrawVignette(): void {
+    const g = this.vignetteGfx;
+    if (!g?.active) return;
     const w = this.scale.width;
     const h = this.scale.height;
+    g.clear();
     const bands = 6;
     const step = 5;
     for (let i = 0; i < bands; i++) {
@@ -1121,6 +1197,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(90);
+    this.promoteUi(plate);
     this.tweens.add({
       targets: plate,
       alpha: 0,
