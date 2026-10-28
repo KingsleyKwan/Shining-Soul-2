@@ -17,8 +17,8 @@ export const SELECTED_STAGE_KEY = 'selectedStageId';
 export const STAGES: readonly StageDef[] = [
   {
     id: 1,
-    nameZh: '遺跡大廳',
-    shortName: '遺跡',
+    nameZh: '哥不林要塞',
+    shortName: '要塞',
     mapOptions: {},
   },
   {

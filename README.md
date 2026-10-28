@@ -247,6 +247,9 @@ shining-soul-2-web/
     ├── scenes/
     │   ├── BootScene.ts
     │   ├── SelectScene.ts
+    │   ├── StoryScene.ts     # 序章對話卡片
+    │   ├── VillageScene.ts   # 葛蘭多爾城 lite hub
+    │   ├── StageSelectScene.ts
     │   └── GameScene.ts
     └── entities/
         ├── CharacterBase.ts
@@ -286,7 +289,11 @@ Panel to equip / unequip / swap gear; soft-pause while open; keyboard + touch.
 
 ### Done — C2 multi-stage select + unlock / 關卡選擇＋解鎖已完成
 
-StageSelect after hero pick; stage 1「遺跡大廳」always open; stage 2「深層迴廊」unlocks permanently on stage-1 clear (`unlockedStages` in save v1). Clear panel offers **下一關** when available.
+StageSelect; stage 1「哥不林要塞」always open; stage 2「深層迴廊」unlocks permanently on stage-1 clear (`unlockedStages` in save v1). Clear panel offers **下一關** when available.
+
+### Done — early-game loop / 序章→村莊→要塞→回城 已完成
+
+New game: hero → StoryScene（帝斯哈多／國王卡片）→ VillageScene（葛蘭多爾城 lite）→ 哥不林要塞 → clear → **回城** turn-in. Flags: `seenIntro`, `goblinCleared`, `villageVisited`.
 
 ### Next ideas / 下一步想法
 1. Compare tooltips / drag-drop polish · 對比提示／拖放  

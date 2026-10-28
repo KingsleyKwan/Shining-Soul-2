@@ -1,37 +1,23 @@
-# Stage slice — fuller map + stage clear
+# Early-game loop — 序章 → 村莊 → 哥不林要塞 → 回城
 
-## How to clear the stage
+## Flow
 
-1. Start in **Entry · 營地大廳** (west). One weak Paste; the boss is not in this room.
-2. Walk into the east door → **Corridor · 戰鬥迴廊** (three Pastes).
-3. South door → **Chest · 寶箱房**. Press **E** (or Space while the prompt shows) to open the chest. North door returns to the corridor.
-4. East door from the corridor → **Boss · 競技場**. Defeat **Captain Gully / 蓋利隊長** alone in that room.
-5. A toast says `蓋利隊長已擊破 · 出口已開啟`. A glowing circle labeled **出口** appears on the north side of the arena.
-6. Walk into the exit. The **關卡清除** overlay opens (`data-testid=stageclear-overlay`).
-   - **重新開始** or **R** — restart the dungeon, same class
-   - **選角** or **Esc** — back to character select
-   - **繼續** — dismiss the panel and keep walking (step off the exit to re-trigger it)
+1. **選角**（SelectScene）→ **新遊戲** clears save → StoryScene
+2. **序章卡片**（StoryScene）：帝斯哈多擄走卡蜜兒 → 國王馬歇爾委託調查哥不林要塞 → 進入村莊
+3. **葛蘭多爾城 lite**（VillageScene）：國王（任務／回報）、紅鞋少女 stub、出發要塞、關卡選擇
+4. **哥不林要塞**（stage 1）：入口 → 迴廊 → 寶箱 → 蓋利隊長 → 出口
+5. **關卡清除**：主按鈕 **回城** → Village（國王感謝；深層迴廊已解鎖）
 
-Spawn grace is about 2 seconds. Pastes are placed off the door tiles so the openings stay walkable.
+Continue（已看過序章）→ 直接村莊。Stage 2「深層迴廊」仍可從村莊「關卡選擇」進入。
 
-## Map
+## Save flags（v1）
 
-144×64 tiles @ 16px → 2304×1024. Regen with:
+- `seenIntro` — 序章已看
+- `goblinCleared` — 要塞通關（國王 turn-in）
+- `villageVisited` — 到過村莊
 
-```bash
-python3 tools/make_dungeon_map.py
-```
+## Soft leftovers vs full GBA
 
-That rewrites `public/assets/maps/dungeon-room.json` and `dungeon-room.tmj` plus `dungeon-tiles.png`. Runtime rooms use MapGenerator; BootScene loads `dungeon-tiles` only (room JSON stripped from dist).
-
-Room rects are map properties `roomA`, `roomC`, `roomB`, `roomBoss` (`x,y,w,h` pixels).
-
-## Files touched
-
-- `tools/make_dungeon_map.py` — four-room layout, door links, spawn/aggro checks
-- `public/assets/maps/dungeon-room.json`
-- `public/assets/maps/dungeon-room.tmj`
-- `public/assets/maps/dungeon-tiles.png` — same procedural tiles, regenerated
-- `src/ui/StageClearDom.ts` — new DOM overlay
-- `src/scenes/GameScene.ts` — multi-room camera, spawns, exit portal, stage clear
-- `README.md` — controls, features, world, map size
+- 無完整王城地圖／商店／鬥技場實戰（僅對話卡）
+- 紅鞋掉落未接（少女僅對話 stub）
+- 無像素級原版演出
