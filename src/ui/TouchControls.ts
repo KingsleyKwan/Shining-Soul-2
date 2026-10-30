@@ -29,7 +29,8 @@ type HeldButton = {
   idleAlpha: number;
 };
 
-const UI_DEPTH = 1200;
+/** Depth floor for on-screen stick / action buttons (hub pills sit above). */
+export const UI_DEPTH = 1200;
 
 /**
  * Floating virtual joystick (left half) + fixed action buttons (right).
@@ -201,6 +202,8 @@ export class TouchControls {
     if (this.stickPointerId !== null) return;
     // Guard: never capture touches that land on the right half (buttons live there).
     if (pointer.x >= this.scene.scale.width * 0.5) return;
+    // Hub talk pills (and any UI above the stick) must keep the tap.
+    if (pointerWasClaimedAboveStick(this.scene, pointer, this.stickZone)) return;
     this.stickPointerId = pointer.id;
     this.baseX = pointer.x;
     this.baseY = pointer.y;
@@ -322,6 +325,28 @@ export class TouchControls {
  * For a circle of paint radius `radius` (origin 0.5), the visual center is
  * therefore (radius, radius) in hit-area space — not (0, 0).
  */
+
+/** True when hit-test finds a visible interactive above the stick zone at this point. */
+function pointerWasClaimedAboveStick(
+  scene: Phaser.Scene,
+  pointer: Phaser.Input.Pointer,
+  stickZone?: Phaser.GameObjects.Zone,
+): boolean {
+  const stickDepth = stickZone?.depth ?? UI_DEPTH - 1;
+  const hits = scene.input.hitTestPointer(pointer);
+  for (const obj of hits) {
+    if (!obj || obj === stickZone) continue;
+    const go = obj as Phaser.GameObjects.GameObject & {
+      depth?: number;
+      visible?: boolean;
+      active?: boolean;
+    };
+    if (go.active === false || go.visible === false) continue;
+    if ((go.depth ?? 0) > stickDepth) return true;
+  }
+  return false;
+}
+
 function enableCircleHit(
   circle: Phaser.GameObjects.Arc,
   radius: number,

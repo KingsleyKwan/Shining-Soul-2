@@ -5,7 +5,7 @@ import { HEROES, SELECTED_HERO_KEY, type HeroId } from '../data/players';
 import { SELECTED_STAGE_KEY, getStage, type StageId } from '../data/stages';
 import { InputState } from '../input/InputState';
 import * as SaveManager from '../systems/SaveManager';
-import { TouchControls } from '../ui/TouchControls';
+import { TouchControls, UI_DEPTH } from '../ui/TouchControls';
 
 type NpcKind = 'king' | 'girl' | null;
 
@@ -66,10 +66,14 @@ export class VillageScene extends Phaser.Scene {
   private blockers!: Phaser.Physics.Arcade.StaticGroup;
   private interactables: Interactable[] = [];
   private nearest: Interactable | null = null;
+  private kingSprite?: Phaser.GameObjects.Sprite;
+  private girlSprite?: Phaser.GameObjects.Sprite;
+  private npcSoftTargets: { x: number; y: number; minDist: number }[] = [];
 
   private zoneGfx?: Phaser.GameObjects.Graphics;
   private namePill?: Phaser.GameObjects.Container;
   private actionPill?: Phaser.GameObjects.Container;
+  private actionPillBg?: Phaser.GameObjects.Rectangle;
   private departHint?: Phaser.GameObjects.Text;
 
   constructor() {
@@ -118,6 +122,8 @@ export class VillageScene extends Phaser.Scene {
 
     this.touch = new TouchControls(this, { mode: 'hub' });
     this.inputState = new InputState(this);
+    // Pills sit above the stick; topOnly so the stick zone cannot steal 對話 taps.
+    this.input.setTopOnly(true);
 
     this.input.on('pointerdown', () => this.audio.ensurePlaying());
 
@@ -175,6 +181,8 @@ export class VillageScene extends Phaser.Scene {
       this.animCtl?.playIdle();
     }
     this.player.setVelocity(vx, vy);
+    this.applyNpcSoftSeparation();
+    this.refreshDepthSort();
 
     this.refreshNearest();
     this.refreshPills();
@@ -390,24 +398,37 @@ export class VillageScene extends Phaser.Scene {
     add(Math.round(w * 0.72), Math.round(h * 0.78), 36, 16);
     add(Math.round(w * 0.18), Math.round(h * 0.68), 40, 14);
     add(Math.round(w * 0.78), Math.round(h * 0.7), 24, 20);
-    // NPC soft blockers
-    add(L.king.x, L.king.y + 4, 22, 20);
-    add(L.girl.x, L.girl.y + 4, 20, 18);
-    add(L.signpost.x, L.signpost.y + 6, 16, 24);
+    // NPC soft blockers — match scale-2 standee footprint (feet-centered).
+    add(L.king.x, L.king.y + 2, 36, 28);
+    add(L.girl.x, L.girl.y + 2, 34, 26);
+    add(L.signpost.x, L.signpost.y + 6, 20, 28);
+    this.npcSoftTargets = [
+      { x: L.king.x, y: L.king.y, minDist: 22 },
+      { x: L.girl.x, y: L.girl.y, minDist: 20 },
+    ];
+    // Ensure static bodies match rectangle sizes after group add.
+    this.blockers.getChildren().forEach((child) => {
+      const body = (child as Phaser.Physics.Arcade.Image).body as
+        | Phaser.Physics.Arcade.StaticBody
+        | null;
+      body?.updateFromGameObject();
+    });
   }
 
   private placeNpcs(L: HubLayout): void {
     const king = this.add.sprite(L.king.x, L.king.y, 'npc', 'king_idle_0');
     king.setScale(PLAYER_SCALE);
     king.setOrigin(0.5, 0.85);
-    king.setDepth(4);
+    king.setDepth(Math.round(L.king.y));
     king.play('npc-king-idle');
+    this.kingSprite = king;
 
     const girl = this.add.sprite(L.girl.x, L.girl.y, 'npc', 'girl_idle_0');
     girl.setScale(PLAYER_SCALE);
     girl.setOrigin(0.5, 0.85);
-    girl.setDepth(4);
+    girl.setDepth(Math.round(L.girl.y));
     girl.play('npc-girl-idle');
+    this.girlSprite = girl;
 
     // Signpost
     const sx = L.signpost.x;
@@ -438,12 +459,13 @@ export class VillageScene extends Phaser.Scene {
     const sprite = this.physics.add.sprite(L.spawn.x, L.spawn.y, hero.atlas, hero.previewFrame);
     sprite.setScale(PLAYER_SCALE);
     sprite.setOrigin(0.5, 0.85);
-    sprite.setDepth(5);
+    sprite.setDepth(Math.round(L.spawn.y));
     sprite.setCollideWorldBounds(true);
     this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height);
     const body = sprite.body as Phaser.Physics.Arcade.Body;
-    body.setSize(10, 8);
-    body.setOffset(sprite.width / 2 - 5, sprite.height - 12);
+    // Slightly larger feet box so hub soft blockers actually catch the standee.
+    body.setSize(14, 10);
+    body.setOffset(sprite.width / 2 - 7, sprite.height - 14);
     this.physics.add.collider(sprite, this.blockers);
     this.player = sprite;
     this.animCtl = new FourDirAnimController(sprite, hero.data.anim);
@@ -604,7 +626,7 @@ export class VillageScene extends Phaser.Scene {
     const backBg = this.add
       .rectangle(52, 28, 88, 28, 0x243038, 0.9)
       .setStrokeStyle(2, 0x9ab0c0)
-      .setDepth(14)
+      .setDepth(UI_DEPTH + 15)
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
     this.add
@@ -614,7 +636,7 @@ export class VillageScene extends Phaser.Scene {
         color: '#e4eef4',
       })
       .setOrigin(0.5)
-      .setDepth(15)
+      .setDepth(UI_DEPTH + 16)
       .setScrollFactor(0);
     backBg.on('pointerdown', () => {
       this.audio.confirm();
@@ -635,9 +657,11 @@ export class VillageScene extends Phaser.Scene {
   }
 
   private buildPillUi(): void {
+    // Above TouchControls stick (UI_DEPTH-1) so hub「對話」taps are never stolen.
+    const pillDepth = UI_DEPTH + 20;
     this.zoneGfx = this.add.graphics().setDepth(6);
 
-    this.namePill = this.add.container(0, 0).setDepth(16).setVisible(false);
+    this.namePill = this.add.container(0, 0).setDepth(pillDepth).setVisible(false);
     const nameBg = this.add.rectangle(0, 0, 100, 20, 0x1a2430, 0.92).setStrokeStyle(2, 0xffe066);
     const nameTx = this.add
       .text(0, 0, '', { fontFamily: 'monospace', fontSize: '11px', color: '#fff8e0' })
@@ -646,21 +670,33 @@ export class VillageScene extends Phaser.Scene {
     this.namePill.setData('bg', nameBg);
     this.namePill.setData('tx', nameTx);
 
-    this.actionPill = this.add.container(0, 0).setDepth(17).setVisible(false);
-    const actBg = this.add.rectangle(0, 0, 120, 28, 0x2e5a30, 0.95).setStrokeStyle(2, 0xb6f0a0);
+    this.actionPill = this.add.container(0, 0).setDepth(pillDepth + 1).setVisible(false);
+    const actBg = this.add
+      .rectangle(0, 0, 120, 32, 0x2e5a30, 0.95)
+      .setStrokeStyle(2, 0xb6f0a0);
     const actTx = this.add
       .text(0, 0, '', { fontFamily: 'monospace', fontSize: '12px', color: '#eaffe4' })
       .setOrigin(0.5);
     this.actionPill.add([actBg, actTx]);
     this.actionPill.setData('bg', actBg);
     this.actionPill.setData('tx', actTx);
-    this.actionPill.setSize(120, 28);
-    this.actionPill.setInteractive(
-      new Phaser.Geom.Rectangle(-60, -14, 120, 28),
+    this.actionPillBg = actBg;
+    // Fat-finger hit on the fill rect (not the container) — clear bounds + cursor.
+    this.bindActionPillHit(120, 44);
+    actBg.on('pointerdown', () => this.tryInteract());
+  }
+
+  /** Oversized hit area for the action pill (min ~44px tall for thumbs). */
+  private bindActionPillHit(w: number, h: number): void {
+    const bg = this.actionPillBg;
+    if (!bg) return;
+    const hw = Math.max(88, w) / 2;
+    const hh = Math.max(44, h) / 2;
+    bg.setInteractive(
+      new Phaser.Geom.Rectangle(-hw, -hh, hw * 2, hh * 2),
       Phaser.Geom.Rectangle.Contains,
     );
-    if (this.actionPill.input) this.actionPill.input.cursor = 'pointer';
-    this.actionPill.on('pointerdown', () => this.tryInteract());
+    if (bg.input) bg.input.cursor = 'pointer';
   }
 
   private refreshNearest(): void {
@@ -711,11 +747,9 @@ export class VillageScene extends Phaser.Scene {
     actBg.setStrokeStyle(2, it.pillStroke);
     this.actionPill.setPosition(it.x, it.y + 28);
     this.actionPill.setVisible(true);
-    this.actionPill.setSize(aw, 28);
-    this.actionPill.setInteractive(
-      new Phaser.Geom.Rectangle(-aw / 2, -14, aw, 28),
-      Phaser.Geom.Rectangle.Contains,
-    );
+    this.actionPill.setSize(aw, 32);
+    // Keep hit geom in sync with label width; depth already above stick.
+    this.bindActionPillHit(aw + 24, 48);
 
     // Pulse depart CTA
     if (it.id === 'northGate') {
@@ -746,6 +780,32 @@ export class VillageScene extends Phaser.Scene {
       g.beginPath();
       g.arc(cx, cy, r, a0, a1, false);
       g.strokePath();
+    }
+  }
+
+  /** Feet-Y depth so nearer characters draw in front when close (not stacked). */
+  private refreshDepthSort(): void {
+    if (this.player?.active) this.player.setDepth(Math.round(this.player.y));
+    if (this.kingSprite?.active) this.kingSprite.setDepth(Math.round(this.kingSprite.y));
+    if (this.girlSprite?.active) this.girlSprite.setDepth(Math.round(this.girlSprite.y));
+  }
+
+  /** Push player out if a body slip leaves them stacked on an NPC. */
+  private applyNpcSoftSeparation(): void {
+    const p = this.player;
+    if (!p?.active) return;
+    const body = p.body as Phaser.Physics.Arcade.Body | null;
+    for (const t of this.npcSoftTargets) {
+      const dx = p.x - t.x;
+      const dy = p.y - t.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist >= t.minDist || dist < 0.001) continue;
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const push = t.minDist - dist;
+      p.x += nx * push;
+      p.y += ny * push;
+      body?.reset(p.x, p.y);
     }
   }
 
@@ -788,7 +848,7 @@ export class VillageScene extends Phaser.Scene {
 
     this.dialogueBox = this.add
       .container(width / 2, height - 70, [bg, this.dialogueSpeaker, this.dialogueBody, hint])
-      .setDepth(20)
+      .setDepth(UI_DEPTH + 30)
       .setVisible(false);
 
     bg.setInteractive({ useHandCursor: true });
