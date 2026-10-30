@@ -13,6 +13,12 @@ export const ERIC_DATA: PlayerData = {
     cooldownMs: 2800,
     kind: 'dash_smash',
   },
+  secondSkill: {
+    id: 'ground_cleave',
+    labelZh: '裂地斬',
+    cooldownMs: 3400,
+    kind: 'ground_cleave',
+  },
   anim: {
     atlas: 'eric',
     prefix: 'eric',

@@ -1,7 +1,7 @@
 import type { DungeonOptions } from '../systems/MapGenerator';
 
 /** Numeric stage ids used in saves and the registry. */
-export type StageId = 1 | 2;
+export type StageId = 1 | 2 | 3;
 
 /** Per-stage look — tint/fog/props so stages do not share one palette. */
 export type StageVisual = {
@@ -29,7 +29,7 @@ export type StageDef = {
   mapOptions: DungeonOptions;
   visual: StageVisual;
   /** BGM track key for GameAudio.startBgm. */
-  bgm: 'stage1' | 'stage2';
+  bgm: 'stage1' | 'stage2' | 'stage3';
 };
 
 /** Phaser registry key for the stage chosen on StageSelectScene. */
@@ -38,7 +38,7 @@ export const SELECTED_STAGE_KEY = 'selectedStageId';
 export const STAGES: readonly StageDef[] = [
   {
     id: 1,
-    nameZh: '哥不林要塞',
+    nameZh: '哥布林要塞',
     shortName: '要塞',
     mapOptions: { propDensity: 0.9, floorStyle: 'checker' },
     visual: {
@@ -78,15 +78,38 @@ export const STAGES: readonly StageDef[] = [
     },
     bgm: 'stage2',
   },
+  {
+    id: 3,
+    nameZh: '荒廢神殿',
+    shortName: '神殿',
+    // Short playable stub: same generator, ash/ember palette, stripe floors.
+    mapOptions: {
+      pasteHpScale: 1.25,
+      propDensity: 1.15,
+      floorStyle: 'stripe',
+    },
+    visual: {
+      bgColor: '#14080c',
+      groundTint: 0xf0b0a0,
+      wallTint: 0xc47858,
+      fogColor: 0x581820,
+      fogAlpha: 0.16,
+      nameplateColor: '#ffc0b0',
+      propDensity: 1.15,
+      floorStyle: 'stripe',
+    },
+    bgm: 'stage3',
+  },
 ];
 
 const BY_ID: Record<StageId, StageDef> = {
   1: STAGES[0]!,
   2: STAGES[1]!,
+  3: STAGES[2]!,
 };
 
 export function isStageId(value: unknown): value is StageId {
-  return value === 1 || value === 2;
+  return value === 1 || value === 2 || value === 3;
 }
 
 export function getStage(id: StageId): StageDef {

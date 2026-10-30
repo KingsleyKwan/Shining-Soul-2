@@ -34,7 +34,15 @@ export type AnimSetKeys = {
   deathLastFrame: string;
 };
 
-export type ActiveSkillKind = 'dash_smash' | 'arc_bolt' | 'shadow_flurry' | 'rain_of_arrows';
+export type ActiveSkillKind =
+  | 'dash_smash'
+  | 'arc_bolt'
+  | 'shadow_flurry'
+  | 'rain_of_arrows'
+  | 'ground_cleave'
+  | 'heal_pulse'
+  | 'spin_slash'
+  | 'pierce_shot';
 
 export type ActiveSkillDef = {
   id: string;
@@ -51,8 +59,13 @@ export type PlayerData = {
   stats: CharacterStats;
   weapons: WeaponPermissions;
   anim: AnimSetKeys;
-  /** Primary active skill (Q / SKILL). Stub slots can be added later. */
+  /** Primary active skill (Q / 技). */
   activeSkill: ActiveSkillDef;
+  /**
+   * Second skill (F / 技2). Locked until SECOND_SKILL_LEVEL.
+   * F is used because R restarts the run and E opens chests.
+   */
+  secondSkill: ActiveSkillDef;
   /**
    * Basic attack shape. Omit or `'melee'` for a contact slash.
    * `'bow'` fires ranged arrows on release (no melee hitbox).

@@ -13,6 +13,12 @@ export const PRIM_DATA: PlayerData = {
     cooldownMs: 2200,
     kind: 'arc_bolt',
   },
+  secondSkill: {
+    id: 'heal_pulse',
+    labelZh: '治癒之光',
+    cooldownMs: 4200,
+    kind: 'heal_pulse',
+  },
   anim: {
     atlas: 'prim',
     prefix: 'prim',
