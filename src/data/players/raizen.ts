@@ -13,6 +13,12 @@ export const RAIZEN_DATA: PlayerData = {
     cooldownMs: 2500,
     kind: 'shadow_flurry',
   },
+  secondSkill: {
+    id: 'spin_slash',
+    labelZh: '旋身斬',
+    cooldownMs: 3000,
+    kind: 'spin_slash',
+  },
   anim: {
     atlas: 'raizen',
     prefix: 'raizen',

@@ -6,23 +6,30 @@ import {
 } from '../data/stages';
 import type { RolledItem } from '../data/loot/types';
 import { Inventory, type EquipSlot } from './Inventory';
+import { MAX_LEVEL, expToNext } from './Progression';
 
-/** localStorage key for the v1 profile (hero, gold, bag, equipped gear, unlocks). */
+/**
+ * localStorage key. The name stays on v1 so older profiles still load.
+ * The payload version inside may be 1 or 2; missing level fields become Lv1 / 0.
+ */
 export const SAVE_STORAGE_KEY = 'shining-soul-2-save-v1';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
+
+/** v1 profiles have no level fields. Both versions stay readable. */
+const ACCEPTED_SAVE_VERSIONS = new Set([1, 2]);
 
 export type StoryFlags = {
   /** Intro / Deatharte / King cards already shown. */
   seenIntro: boolean;
-  /** Stage 1 哥不林要塞 cleared (Captain Gully defeated + exit). */
+  /** Stage 1 哥布林要塞 cleared (Captain Gully defeated + exit). */
   goblinCleared: boolean;
   /** Player has visited the village hub at least once. */
   villageVisited: boolean;
 };
 
 export type SaveData = {
-  version: 1;
+  version: 2;
   heroId: HeroId;
   gold: number;
   bag: RolledItem[];
@@ -32,6 +39,10 @@ export type SaveData = {
   seenIntro: boolean;
   goblinCleared: boolean;
   villageVisited: boolean;
+  /** Persistent run level. Death does not reset it. New game is 1. */
+  level: number;
+  /** EXP toward the next level, not a lifetime total. */
+  exp: number;
 };
 
 export function isHeroId(value: unknown): value is HeroId {
@@ -75,7 +86,7 @@ export function clear(): void {
   }
 }
 
-/** True only when a v1 save with a known hero can be loaded. */
+/** True only when a readable save with a known hero can be loaded. */
 export function hasSave(): boolean {
   return load() !== null;
 }
@@ -120,10 +131,10 @@ export function withFlags(data: SaveData, patch: Partial<StoryFlags>): SaveData 
   };
 }
 
-/** Build a fresh v1 profile for a hero (new game). */
+/** Build a fresh profile for a hero (new game). Level starts at 1 / 0 經驗. */
 export function makeFreshSave(heroId: HeroId, flags?: Partial<StoryFlags>): SaveData {
   return {
-    version: 1,
+    version: SAVE_VERSION,
     heroId,
     gold: 0,
     bag: [],
@@ -132,6 +143,8 @@ export function makeFreshSave(heroId: HeroId, flags?: Partial<StoryFlags>): Save
     seenIntro: !!flags?.seenIntro,
     goblinCleared: !!flags?.goblinCleared,
     villageVisited: !!flags?.villageVisited,
+    level: 1,
+    exp: 0,
   };
 }
 
@@ -147,11 +160,14 @@ export function mergeProfile(
     bag?: RolledItem[];
     equipped?: Partial<Record<EquipSlot, RolledItem>>;
     unlockedStages?: StageId[];
+    level?: number;
+    exp?: number;
   } & Partial<StoryFlags>,
 ): SaveData {
   const base = existing ?? makeFreshSave(patch.heroId);
+  const level = sanitizeLevel(patch.level ?? base.level);
   return {
-    version: 1,
+    version: SAVE_VERSION,
     heroId: patch.heroId,
     gold: patch.gold ?? base.gold,
     bag: patch.bag ?? base.bag,
@@ -160,6 +176,8 @@ export function mergeProfile(
     seenIntro: patch.seenIntro ?? base.seenIntro,
     goblinCleared: patch.goblinCleared ?? base.goblinCleared,
     villageVisited: patch.villageVisited ?? base.villageVisited,
+    level,
+    exp: sanitizeExp(patch.exp ?? base.exp, level),
   };
 }
 
@@ -175,6 +193,17 @@ function getStorage(): Storage | null {
 function sanitizeGold(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return 0;
   return Math.floor(value);
+}
+
+function sanitizeLevel(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 1;
+  return Math.min(MAX_LEVEL, Math.max(1, Math.floor(value)));
+}
+
+function sanitizeExp(value: unknown, level: number): number {
+  const cap = Math.max(1, expToNext(level));
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return 0;
+  return Math.min(cap - 1, Math.floor(value));
 }
 
 function sanitizeUnlocked(value: unknown): StageId[] {
@@ -201,13 +230,14 @@ function asBool(value: unknown): boolean {
 function parseSave(value: unknown): SaveData | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
-  if (raw.version !== SAVE_VERSION) return null;
+  if (typeof raw.version !== 'number' || !ACCEPTED_SAVE_VERSIONS.has(raw.version)) return null;
   if (!isHeroId(raw.heroId)) return null;
 
   const inv = Inventory.fromJSON({ bag: raw.bag, equipped: raw.equipped });
   const snap = inv.toJSON();
+  const level = sanitizeLevel(raw.level);
   return {
-    version: 1,
+    version: SAVE_VERSION,
     heroId: raw.heroId,
     gold: sanitizeGold(raw.gold),
     bag: snap.bag,
@@ -216,5 +246,7 @@ function parseSave(value: unknown): SaveData | null {
     seenIntro: asBool(raw.seenIntro),
     goblinCleared: asBool(raw.goblinCleared),
     villageVisited: asBool(raw.villageVisited),
+    level,
+    exp: sanitizeExp(raw.exp, level),
   };
 }

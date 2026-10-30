@@ -1,17 +1,21 @@
 /**
  * Runtime one-stage dungeon.
  *
- * Grows a connected 4-room graph (entry → combat, then chest and boss on two
- * other sides of combat), stamps 48×32 shells, and emits Tiled JSON Phaser
- * can load with tileset key `dungeon-tiles`. Door lanes stay open: a cross
- * of floor is never decorated, and openings are cut last.
- * Invalid graphs retry with seed+1 (cap 40).
+ * Grows a connected 7-room graph and stamps 48×32 shells. Tiled JSON uses
+ * tileset key `dungeon-tiles`. Door lanes stay open: a cross of floor is
+ * never decorated, and openings are cut last.
+ *
+ * Path to the boss is linear: a → c → d → e → boss.
+ * Chest room b branches off d. Side room f branches off b (or c / e if b
+ * is boxed in). Invalid graphs retry with seed+1 (cap 80).
  *
  * GIDs match tools/make_dungeon_map.py:
  * 1 void, 2 floorA, 3 floorB, 4 wall, 5 wall-top, 6 pillar, 7 door.
  */
 
-export type RoomId = 'a' | 'c' | 'b' | 'boss';
+/** Entry, two combat halls, a later hall, chest, side branch, boss. */
+export const ROOM_IDS = ['a', 'c', 'd', 'e', 'b', 'f', 'boss'] as const;
+export type RoomId = (typeof ROOM_IDS)[number];
 
 /** Ground pattern. Checker is the stock fort; stripe / dense read as another stage. */
 export type FloorStyle = 'checker' | 'stripe' | 'dense';
@@ -42,7 +46,7 @@ export type GeneratedDungeon = {
 const TILE = 16;
 const ROOM_W = 48;
 const ROOM_H = 32;
-const MAX_TRIES = 40;
+const MAX_TRIES = 80;
 
 /** Paste aggro is 150px; boss aggro is 200px. Match the Python map tool. */
 const PASTE_AGGRO = 150;
@@ -62,17 +66,35 @@ const GID = {
   door: 7,
 } as const;
 
-const ROOM_IDS: readonly RoomId[] = ['a', 'c', 'b', 'boss'];
-
 const PROP_NAME: Record<RoomId, string> = {
   a: 'roomA',
   c: 'roomC',
+  d: 'roomD',
+  e: 'roomE',
   b: 'roomB',
+  f: 'roomF',
   boss: 'roomBoss',
 };
 
-const PASTE_HP: Record<RoomId, number> = { a: 2, c: 3, b: 2, boss: 3 };
-const PASTE_COUNT: Record<RoomId, number> = { a: 1, c: 3, b: 1, boss: 0 };
+/** Roughly 1.5–2× the old 1/3/1 Paste counts, plus the new halls. */
+const PASTE_HP: Record<RoomId, number> = {
+  a: 2,
+  c: 3,
+  d: 3,
+  e: 4,
+  b: 2,
+  f: 2,
+  boss: 3,
+};
+const PASTE_COUNT: Record<RoomId, number> = {
+  a: 2,
+  c: 5,
+  d: 3,
+  e: 3,
+  b: 2,
+  f: 2,
+  boss: 0,
+};
 
 type Side = 'n' | 'e' | 's' | 'w';
 
@@ -256,17 +278,10 @@ function tryGenerate(seed: number, opts: NormalizedOptions): Attempt {
     paintDecor(rng, id, cells[id], walls, mapW, opts.propDensity);
   }
 
-  const links: { from: RoomId; to: RoomId; side: Side }[] = [];
-  const pairs: [RoomId, RoomId][] = [
-    ['a', 'c'],
-    ['c', 'b'],
-    ['c', 'boss'],
-  ];
-  for (const [from, to] of pairs) {
-    const side = sideBetween(cells[from], cells[to]);
-    if (!side) return { ok: false, error: `${from} is not adjacent to ${to}` };
-    links.push({ from, to, side });
-    cutDoor(ground, walls, mapW, cells[from], side, cells[to]);
+  const links = plannedLinks(cells);
+  if (!links) return { ok: false, error: 'rooms are not linked the way the graph requires' };
+  for (const link of links) {
+    cutDoor(ground, walls, mapW, cells[link.from], link.side, cells[link.to]);
   }
 
   const objects: Spawn[] = [];
@@ -289,8 +304,12 @@ function tryGenerate(seed: number, opts: NormalizedOptions): Attempt {
     objects.push(makeArrival(cells, link.to, OPP[link.side]));
   }
 
-  const chestLink = links.find((l) => l.to === 'b' || l.from === 'b');
-  const bossLink = links.find((l) => l.to === 'boss' || l.from === 'boss');
+  const chestLink = links.find(
+    (l) => (l.from === 'd' && l.to === 'b') || (l.from === 'b' && l.to === 'd'),
+  );
+  const bossLink = links.find(
+    (l) => (l.from === 'e' && l.to === 'boss') || (l.from === 'boss' && l.to === 'e'),
+  );
   if (!chestLink || !bossLink) return { ok: false, error: 'missing chest or boss link' };
   const chestSide: Side = chestLink.to === 'b' ? OPP[chestLink.side] : chestLink.side;
   const bossSide: Side = bossLink.to === 'boss' ? OPP[bossLink.side] : bossLink.side;
@@ -346,30 +365,72 @@ function tryGenerate(seed: number, opts: NormalizedOptions): Attempt {
   return { ok: true, dungeon: { seed, tiled, rooms } };
 }
 
+type DoorLink = { from: RoomId; to: RoomId; side: Side };
+
+/**
+ * Doors follow the fixed graph, not every geometric touch.
+ * f hangs off whichever parent layoutRooms actually attached.
+ */
+function plannedLinks(cells: Record<RoomId, Cell>): DoorLink[] | null {
+  const edges: [RoomId, RoomId][] = [
+    ['a', 'c'],
+    ['c', 'd'],
+    ['d', 'e'],
+    ['e', 'boss'],
+    ['d', 'b'],
+  ];
+  const fParent = (['b', 'c', 'e'] as const).find((id) => sideBetween(cells[id], cells.f));
+  if (!fParent) return null;
+  edges.push([fParent, 'f']);
+
+  const links: DoorLink[] = [];
+  for (const [from, to] of edges) {
+    const side = sideBetween(cells[from], cells[to]);
+    if (!side) return null;
+    links.push({ from, to, side });
+  }
+  return links;
+}
+
 function layoutRooms(rng: () => number): Record<RoomId, Cell> | null {
-  const a: Cell = { x: 0, y: 0 };
-  const combatSide = shuffle(SIDES, rng)[0];
-  const c: Cell = { x: DIR[combatSide].dx, y: DIR[combatSide].dy };
-  const occupied = new Set([cellKey(a), cellKey(c)]);
-  const free = SIDES.filter((side) => {
-    const n = { x: c.x + DIR[side].dx, y: c.y + DIR[side].dy };
-    return !occupied.has(cellKey(n));
-  });
-  if (free.length < 2) return null;
-  const picked = shuffle(free, rng);
-  const b: Cell = { x: c.x + DIR[picked[0]].dx, y: c.y + DIR[picked[0]].dy };
-  const boss: Cell = { x: c.x + DIR[picked[1]].dx, y: c.y + DIR[picked[1]].dy };
-  const cells: Record<RoomId, Cell> = { a, c, b, boss };
+  const cells: Partial<Record<RoomId, Cell>> = { a: { x: 0, y: 0 } };
+  const occupied = new Set<string>([cellKey(cells.a!)]);
+
+  const placeNext = (id: RoomId, from: RoomId): boolean => {
+    const origin = cells[from];
+    if (!origin) return false;
+    for (const side of shuffle(SIDES, rng)) {
+      const next = { x: origin.x + DIR[side].dx, y: origin.y + DIR[side].dy };
+      const key = cellKey(next);
+      if (occupied.has(key)) continue;
+      cells[id] = next;
+      occupied.add(key);
+      return true;
+    }
+    return false;
+  };
+
+  // Boss path first, then the chest branch, then the optional side room.
+  if (!placeNext('c', 'a') || !placeNext('d', 'c') || !placeNext('e', 'd') || !placeNext('boss', 'e')) {
+    return null;
+  }
+  if (!placeNext('b', 'd')) return null;
+  if (!placeNext('f', 'b') && !placeNext('f', 'c') && !placeNext('f', 'e')) return null;
+
   let minX = 0;
   let minY = 0;
   for (const id of ROOM_IDS) {
-    minX = Math.min(minX, cells[id].x);
-    minY = Math.min(minY, cells[id].y);
+    const cell = cells[id];
+    if (!cell) return null;
+    minX = Math.min(minX, cell.x);
+    minY = Math.min(minY, cell.y);
   }
+  const out = {} as Record<RoomId, Cell>;
   for (const id of ROOM_IDS) {
-    cells[id] = { x: cells[id].x - minX, y: cells[id].y - minY };
+    const cell = cells[id]!;
+    out[id] = { x: cell.x - minX, y: cell.y - minY };
   }
-  return cells;
+  return out;
 }
 
 /** floorA when true. Checker + boss matches the original shell exactly. */
@@ -724,22 +785,27 @@ function validate(
     }
   }
 
-  const counts: Record<RoomId, number> = { a: 0, c: 0, b: 0, boss: 0 };
+  const counts = {} as Record<RoomId, number>;
+  for (const id of ROOM_IDS) counts[id] = 0;
   for (const enemy of objects) {
     if (enemy.kind === 'enemy') counts[enemy.room] += 1;
   }
-  if (counts.a < 1 || counts.c < 1 || counts.b < 1) return 'a combat room is missing Pastes';
   if (counts.boss !== 0) return 'boss room should not contain Pastes';
+  for (const id of ROOM_IDS) {
+    if (id === 'boss') continue;
+    if (counts[id] < PASTE_COUNT[id]) return `${id} is short on Pastes`;
+  }
 
-  const adj: Record<RoomId, RoomId[]> = { a: [], c: [], b: [], boss: [] };
+  const adj = {} as Record<RoomId, RoomId[]>;
+  for (const id of ROOM_IDS) adj[id] = [];
   for (const door of doors) {
     if (door.dest) adj[door.room].push(door.dest);
   }
-  if (!reaches(adj, 'a', 'b') || !reaches(adj, 'a', 'boss')) {
-    return 'door graph cannot reach the chest or the boss';
+  if (!reaches(adj, 'a', 'b') || !reaches(adj, 'a', 'boss') || !reaches(adj, 'a', 'f')) {
+    return 'door graph cannot reach the chest, the branch, or the boss';
   }
-  if (!reaches(adj, 'b', 'a') || !reaches(adj, 'boss', 'a') || !reaches(adj, 'c', 'a')) {
-    return 'door graph has a one-way dead end';
+  for (const id of ROOM_IDS) {
+    if (!reaches(adj, id, 'a')) return 'door graph has a one-way dead end';
   }
 
   const goals = new Map<string, string>();

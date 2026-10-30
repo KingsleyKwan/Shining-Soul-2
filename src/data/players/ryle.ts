@@ -14,6 +14,12 @@ export const RYLE_DATA: PlayerData = {
     cooldownMs: 2600,
     kind: 'rain_of_arrows',
   },
+  secondSkill: {
+    id: 'pierce_shot',
+    labelZh: '穿雲箭',
+    cooldownMs: 2800,
+    kind: 'pierce_shot',
+  },
   anim: {
     atlas: 'ryle',
     prefix: 'ryle',
