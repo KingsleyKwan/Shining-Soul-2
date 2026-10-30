@@ -17,6 +17,11 @@ export class InputState {
   attackReleased = false;
   /** Q or the 技 button. Edge-triggered. */
   skillPressed = false;
+  /**
+   * F or the 技2 button. Edge-triggered.
+   * R stays restart — binding skill 2 to R would reload the stage.
+   */
+  skill2Pressed = false;
   /** Keyboard Space edge. Near a chest this opens it and suppresses the slash. */
   spacePressed = false;
   /** E, Space, or the E button. Edge-triggered. */
@@ -36,6 +41,7 @@ export class InputState {
   private keySpace?: Phaser.Input.Keyboard.Key;
   private keyZ?: Phaser.Input.Keyboard.Key;
   private keyQ?: Phaser.Input.Keyboard.Key;
+  private keyF?: Phaser.Input.Keyboard.Key;
   private keyE?: Phaser.Input.Keyboard.Key;
   private keyR?: Phaser.Input.Keyboard.Key;
   private keyEsc?: Phaser.Input.Keyboard.Key;
@@ -56,6 +62,8 @@ export class InputState {
     this.keySpace = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.keyZ = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
     this.keyQ = kb.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+    // F is 技2. R remains restart (see keyR below).
+    this.keyF = kb.addKey(Phaser.Input.Keyboard.KeyCodes.F);
     this.keyE = kb.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.keyR = kb.addKey(Phaser.Input.Keyboard.KeyCodes.R);
     this.keyEsc = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
@@ -91,6 +99,7 @@ export class InputState {
     this.attackHeld = kbAtkHeld || touch.attackHeld;
     this.attackReleased = kbAtkReleased || touch.attackReleased;
     this.skillPressed = justDown(this.keyQ) || touch.skill;
+    this.skill2Pressed = justDown(this.keyF) || touch.skill2;
     this.interactPressed = justDown(this.keyE) || space || touch.interact;
     this.restartPressed = justDown(this.keyR) || touch.restart;
     this.menuPressed = justDown(this.keyEsc) || touch.menu;

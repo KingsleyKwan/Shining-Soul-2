@@ -12,6 +12,8 @@ export type TouchFrame = {
   attackReleased: boolean;
   /** 技 just pressed (edge). */
   skill: boolean;
+  /** 技2 just pressed (edge). Dungeon only — hub mode has no combat buttons. */
+  skill2: boolean;
   interact: boolean;
   restart: boolean;
   menu: boolean;
@@ -19,7 +21,7 @@ export type TouchFrame = {
   inventory: boolean;
 };
 
-type EdgeName = 'attack' | 'skill' | 'interact' | 'restart' | 'menu' | 'inventory';
+type EdgeName = 'attack' | 'skill' | 'skill2' | 'interact' | 'restart' | 'menu' | 'inventory';
 
 type HeldButton = {
   circle: Phaser.GameObjects.Arc;
@@ -38,7 +40,8 @@ const UI_DEPTH = 1200;
  *   stick origin (base + thumb appear there).
  * - Drag from that point = direction (up/down/left/right).
  * - Release = hide stick / zero input.
- * - Right-side ATK／技／包／E buttons are never stolen by the stick zone.
+ * - Right-side ATK／技／技2／包／E buttons are never stolen by the stick zone.
+ * - 技2 is the second skill (desktop F). R stays restart.
  *
  * Desktop keyboard WASD is unchanged (handled outside this class).
  *
@@ -55,6 +58,7 @@ export class TouchControls {
   private edges: Record<EdgeName, boolean> = {
     attack: false,
     skill: false,
+    skill2: false,
     interact: false,
     restart: false,
     menu: false,
@@ -122,6 +126,9 @@ export class TouchControls {
       this.makeButton((w, h) => ({ x: w - 112, y: h - 42 }), 24, 'E', 14, 0xc4922a, 'interact', 36);
       // Above E so it does not cover ATK / E / R / ☰.
       this.makeButton((w, h) => ({ x: w - 112, y: h - 90 }), 22, '技', 14, 0x4a3aa8, 'skill', 30);
+      // Above ATK. Hit radius stays inside the gap so it does not steal 攻擊.
+      // F on desktop. R is restart and is not reused here.
+      this.makeButton((w, h) => ({ x: w - 48, y: h - 128 }), 18, '技2', 11, 0x6a3a88, 'skill2', 24);
       this.makeButton((w, _h) => ({ x: w - 68, y: 22 }), 18, 'R', 12, 0x163044, 'restart', 28);
       this.makeButton((w, _h) => ({ x: w - 24, y: 22 }), 18, '☰', 14, 0x163044, 'menu', 28);
       // Inventory / equipment (left of R so it stays clear of ATK / E / 技).
@@ -173,6 +180,7 @@ export class TouchControls {
       attackHeld: this.attackHeld,
       attackReleased: this.attackReleased,
       skill: this.edges.skill,
+      skill2: this.edges.skill2,
       interact: this.edges.interact,
       restart: this.edges.restart,
       menu: this.edges.menu,
@@ -180,6 +188,7 @@ export class TouchControls {
     };
     this.edges.attack = false;
     this.edges.skill = false;
+    this.edges.skill2 = false;
     this.edges.interact = false;
     this.edges.restart = false;
     this.edges.menu = false;

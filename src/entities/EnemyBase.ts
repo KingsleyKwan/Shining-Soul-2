@@ -14,6 +14,8 @@ export abstract class EnemyBase extends CharacterBase {
   protected knockbackUntil = 0;
   protected hurtUntil = 0;
   private onLootDrop?: (x: number, y: number) => void;
+  /** One-shot, fired when HP first hits 0 — before the death fade. */
+  private onKilled?: () => void;
 
   /** Tiled room this hostile belongs to. Shown only while that room is current. */
   spawnRoom = '';
@@ -47,6 +49,19 @@ export abstract class EnemyBase extends CharacterBase {
 
   setOnLootDrop(cb: (x: number, y: number) => void): void {
     this.onLootDrop = cb;
+  }
+
+  /** EXP and other kill rewards. Cleared after the first death so it cannot double-fire. */
+  setOnKilled(cb: () => void): void {
+    this.onKilled = cb;
+  }
+
+  protected override startDeath(): void {
+    if (this.dying || this.dead) return;
+    const cb = this.onKilled;
+    this.onKilled = undefined;
+    cb?.();
+    super.startDeath();
   }
 
   /**

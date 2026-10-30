@@ -4,6 +4,7 @@ import { FourDirAnimController } from '../anim/FourDirAnimController';
 import type { ActiveSkillDef, HeroDef, PlayerData } from '../data/types';
 import type { ItemMods } from '../data/loot/types';
 import { emptyMods } from '../data/loot/types';
+import { SECOND_SKILL_LEVEL, levelAtkBonus, levelHpBonus } from '../systems/Progression';
 import { CharacterBase } from './CharacterBase';
 
 const HITBOX_LIFE_MS = 200;
@@ -29,6 +30,11 @@ export type PlayerInput = {
   attackReleased: boolean;
   /** Q or the 技 button. Edge-triggered. */
   skillPressed: boolean;
+  /**
+   * F or the 技2 button. Edge-triggered.
+   * R stays restart — binding this slot to R would reload the stage.
+   */
+  skill2Pressed: boolean;
 };
 
 /** Below Paste (220) / Gully (280) iframes so each flurry pulse can connect. */
@@ -61,7 +67,8 @@ const BOW_FAN_RAD = 0.22;
 
 /**
  * Data-driven playable hero.
- * Charge slash or bow volley, gear mods, and one active skill (Q / 技) from PlayerData.
+ * Charge slash or bow volley, gear mods, Q / 技, and a second slot (F / 技2)
+ * that opens at SECOND_SKILL_LEVEL. R is restart and is not a skill key.
  */
 export class PlayerBase extends CharacterBase {
   readonly playerData: PlayerData;
@@ -72,6 +79,11 @@ export class PlayerBase extends CharacterBase {
   /** While true, handleInput must not overwrite dash / lunge velocity. */
   private skillVelocityLock = false;
   private skillCooldownUntil = 0;
+  /** Separate from Q. Starts only after the second slot unlocks. */
+  private skill2CooldownUntil = 0;
+  private runLevel = 1;
+  private levelHp = 0;
+  private levelAtk = 0;
   private skillTimers: Phaser.Time.TimerEvent[] = [];
   private skillVfx: Phaser.GameObjects.GameObject[] = [];
   private projectiles: Bolt[] = [];
@@ -132,10 +144,30 @@ export class PlayerBase extends CharacterBase {
 
   /** Apply aggregated Inventory mods (damage/speed/str/maxHp). Raises/lowers maxHp with gear. */
   applyGearMods(mods: ItemMods): void {
-    const prevMax = this.maxHp;
     this.gearMods = { ...mods };
-    this.moveSpeed = this.baseMoveSpeed + mods.speed;
-    this.maxHp = this.playerData.stats.maxHp + mods.maxHp;
+    this.recomputeVitals();
+  }
+
+  /** Persistent run level. +1 max HP per level above 1; attack every two levels. */
+  setRunLevel(level: number): void {
+    this.runLevel = Math.max(1, Math.floor(level));
+    this.recomputeVitals();
+  }
+
+  isSecondSkillUnlocked(): boolean {
+    return this.runLevel >= SECOND_SKILL_LEVEL;
+  }
+
+  /**
+   * Base HP + gear + level. Heals the positive max-HP delta.
+   * A dead hero is not revived — heal() ignores dying characters.
+   */
+  private recomputeVitals(): void {
+    const prevMax = this.maxHp;
+    this.levelHp = levelHpBonus(this.runLevel);
+    this.levelAtk = levelAtkBonus(this.runLevel);
+    this.moveSpeed = this.baseMoveSpeed + this.gearMods.speed;
+    this.maxHp = this.playerData.stats.maxHp + this.gearMods.maxHp + this.levelHp;
     const delta = this.maxHp - prevMax;
     if (delta > 0) {
       this.heal(delta);
@@ -179,16 +211,26 @@ export class PlayerBase extends CharacterBase {
   getSlashDamage(stage = 0): number {
     const str = this.playerData.stats.str + this.gearMods.str;
     const gearDmg = this.gearMods.damage;
-    return Math.max(1, Math.floor((str + gearDmg + stage * 2) / 2));
+    const base = Math.max(1, Math.floor((str + gearDmg + stage * 2) / 2));
+    return base + this.levelAtk;
   }
 
   getActiveSkill(): ActiveSkillDef {
     return this.playerData.activeSkill;
   }
 
+  getSecondSkill(): ActiveSkillDef {
+    return this.playerData.secondSkill;
+  }
+
   /** 0 when the active skill is ready. */
   getSkillCooldownRemainingMs(): number {
     return Math.max(0, this.skillCooldownUntil - this.scene.time.now);
+  }
+
+  /** 0 when 技2 is ready. Stays 0 while the slot is still locked. */
+  getSkill2CooldownRemainingMs(): number {
+    return Math.max(0, this.skill2CooldownUntil - this.scene.time.now);
   }
 
   /** 0 ready → 1 full cooldown. */
@@ -268,6 +310,7 @@ export class PlayerBase extends CharacterBase {
     }
 
     this.tryStartSkill(input);
+    this.tryStartSkill2(input);
     this.handleAttackInput(input);
 
     const ix = input.moveX;
@@ -430,19 +473,126 @@ export class PlayerBase extends CharacterBase {
       case 'rain_of_arrows':
         this.startRainOfArrows();
         break;
+      default:
+        break;
     }
   }
 
-  /** Shared cast lock. Charge is cancelled; cooldown starts immediately. */
-  private beginSkillLock(): void {
+  /**
+   * Second slot. Shared cast lock with Q so the two skills cannot overlap.
+   * Cooldown is independent. Locked until SECOND_SKILL_LEVEL.
+   */
+  private tryStartSkill2(input: PlayerInput): void {
+    if (!input.skill2Pressed || !this.isSecondSkillUnlocked()) return;
+    if (this.dead || this.dying || this.stunned || this.attacking || this.skillActive) return;
+    if (this.scene.time.now < this.skill2CooldownUntil) return;
+
+    switch (this.playerData.secondSkill.kind) {
+      case 'ground_cleave':
+        this.startGroundCleave();
+        break;
+      case 'heal_pulse':
+        this.startHealPulse();
+        break;
+      case 'spin_slash':
+        this.startSpinSlash();
+        break;
+      case 'pierce_shot':
+        this.startPierceShot();
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Shared cast lock. Charge is cancelled; the chosen slot's cooldown starts now.
+   * Default slot is Q so existing callers stay on the primary skill.
+   * F / 技2 is the second slot. R remains restart.
+   */
+  private beginSkillLock(slot: 'primary' | 'second' = 'primary'): void {
     this.cancelCharge();
     this.clearHitbox();
     this.skillActive = true;
     this.skillVelocityLock = false;
-    this.skillCooldownUntil = this.scene.time.now + this.playerData.activeSkill.cooldownMs;
+    const def = slot === 'second' ? this.playerData.secondSkill : this.playerData.activeSkill;
+    const until = this.scene.time.now + def.cooldownMs;
+    if (slot === 'second') this.skill2CooldownUntil = until;
+    else this.skillCooldownUntil = until;
     this.animCtl.setFacing(this.facing);
     this.animCtl.playAttack();
     GameAudio.get(this.scene)?.skill();
+  }
+
+  /** Wide cleave in front of the hero. Bigger than 強力斬擊, no dash. */
+  private startGroundCleave(): void {
+    this.beginSkillLock('second');
+    this.setVelocity(0, 0);
+    const dir = this.facingUnit();
+    this.trackTimer(80, () => {
+      const horiz = dir.x !== 0;
+      const zone = this.spawnCombatZone(
+        dir.x * 22,
+        dir.y * 22,
+        horiz ? 84 : 56,
+        horiz ? 56 : 84,
+        this.getSlashDamage(3),
+        220,
+      );
+      this.spawnSmashVfx(zone.x, zone.y);
+    });
+    this.trackTimer(320, () => this.endSkill());
+  }
+
+  /** Restore 2 HP and pulse a green ring. No attack zone. */
+  private startHealPulse(): void {
+    this.beginSkillLock('second');
+    this.setVelocity(0, 0);
+    this.heal(2);
+    this.spawnHealRing();
+    this.trackTimer(280, () => this.endSkill());
+  }
+
+  /**
+   * Four sequential arcs. spawnCombatZone keeps a single hitbox, so the
+   * pulses are timed instead of stacked.
+   */
+  private startSpinSlash(): void {
+    this.beginSkillLock('second');
+    this.setVelocity(0, 0);
+    const dirs = [
+      { x: 1, y: 0 },
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 0, y: -1 },
+    ];
+    dirs.forEach((dir, i) => {
+      this.trackTimer(i * 90, () => {
+        const horiz = dir.x !== 0;
+        this.spawnCombatZone(
+          dir.x * 18,
+          dir.y * 18,
+          horiz ? 64 : 40,
+          horiz ? 40 : 64,
+          this.getSlashDamage(1),
+          80,
+          { iframeMs: FLURRY_IFRAME_MS },
+        );
+        this.spawnSpinVfx(dir.x, dir.y);
+        if (i > 0) GameAudio.get(this.scene)?.slash();
+      });
+    });
+    this.trackTimer(400, () => this.endSkill());
+  }
+
+  /** One long arrow. The projectile keeps flying after the cast lock ends. */
+  private startPierceShot(): void {
+    this.beginSkillLock('second');
+    this.setVelocity(0, 0);
+    const dir = this.facingUnit();
+    const ang = Math.atan2(dir.y, dir.x);
+    this.spawnArrow(dir.x, dir.y, 460, 420, this.getSlashDamage(2) + 1, 14, ang);
+    this.trackTimer(200, () => this.endSkill());
   }
 
   private startDashSmash(): void {
@@ -810,6 +960,40 @@ export class PlayerBase extends CharacterBase {
 
   private destroyProjectiles(): void {
     for (let i = this.projectiles.length - 1; i >= 0; i--) this.destroyProjectile(i);
+  }
+
+  private spawnHealRing(): void {
+    const ring = this.scene.add.circle(this.x, this.y, 10, 0x66ee88, 0.35).setDepth(16);
+    ring.setStrokeStyle(3, 0xc8ffd0, 0.95);
+    this.ownVfx(ring);
+    this.scene.tweens.add({
+      targets: ring,
+      scaleX: 2.8,
+      scaleY: 2.8,
+      alpha: 0,
+      duration: 280,
+      onComplete: () => {
+        if (ring.active) ring.destroy();
+      },
+    });
+  }
+
+  private spawnSpinVfx(dirX: number, dirY: number): void {
+    const g = this.scene.add.graphics().setDepth(17);
+    this.ownVfx(g);
+    const ang = Math.atan2(dirY, dirX);
+    g.lineStyle(3, 0xf4f8ff, 0.95);
+    g.beginPath();
+    g.arc(this.x, this.y, 20, ang - 0.7, ang + 0.7, false);
+    g.strokePath();
+    this.scene.tweens.add({
+      targets: g,
+      alpha: 0,
+      duration: 120,
+      onComplete: () => {
+        if (g.active) g.destroy();
+      },
+    });
   }
 
   private spawnSmashVfx(x: number, y: number): void {
