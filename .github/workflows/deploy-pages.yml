@@ -30,6 +30,8 @@ jobs:
           python3 tools/extract_raizen.py
           python3 tools/make_ryle_atlas.py
           python3 tools/make_dungeon_map.py
+          python3 tools/extract_gully.py
+          python3 tools/scrub_atlases.py
       - uses: actions/setup-node@v4
         with:
           node-version: 20
