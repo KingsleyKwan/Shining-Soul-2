@@ -35,7 +35,7 @@ const BGM_VOL = 0.78;
 /** Full-mix OGG fallback — keep it quieter than the synth master. */
 const PHASER_BGM_VOL = 0.22;
 
-export type BgmTrack = 'title' | 'village' | 'stage1' | 'stage2' | 'boss';
+export type BgmTrack = 'title' | 'village' | 'stage1' | 'stage2' | 'stage3' | 'boss';
 
 /** Registry key for the shared audio manager (game-wide). */
 export const AUDIO_REGISTRY_KEY = 'gameAudio';
@@ -137,6 +137,22 @@ const BGM_DEFS: Record<BgmTrack, BgmDef> = {
       { beat: 0, beats: 1.8, freq: 587.33, type: 'sine', vol: 0.05 },
       { beat: 3.5, beats: 1.5, freq: 622.25, type: 'sine', vol: 0.038 },
       { beat: 6.2, beats: 1.6, freq: 440, type: 'sine', vol: 0.042 },
+    ],
+  },
+  // Ash-ember bed for the stage 3 shrine stub. Not the fort or the cold corridor.
+  stage3: {
+    bpm: 84,
+    beats: 8,
+    drones: [
+      { freq: 92.5, type: 'triangle', vol: 0.07 },
+      { freq: 138.59, type: 'sine', vol: 0.035 },
+    ],
+    notes: [
+      { beat: 0, beats: 1.2, freq: 233.08, type: 'triangle', vol: 0.09 },
+      { beat: 2, beats: 0.8, freq: 311.13, type: 'sine', vol: 0.07 },
+      { beat: 3.5, beats: 1.1, freq: 196, type: 'triangle', vol: 0.08 },
+      { beat: 5, beats: 1.0, freq: 349.23, type: 'sine', vol: 0.06 },
+      { beat: 6.5, beats: 1.2, freq: 246.94, type: 'triangle', vol: 0.075 },
     ],
   },
   // Low pulse and clashing stabs. No shared melody with the stage beds.

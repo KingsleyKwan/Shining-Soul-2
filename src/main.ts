@@ -19,8 +19,8 @@ const config: Phaser.Types.Core.GameConfig = {
   // Long-press on the stick should not open the browser menu.
   disableContextMenu: true,
   input: {
-    // Pointer 0 is the mouse. Touches use 1..N — stick + 技 + ATK + E need four.
-    activePointers: 5,
+    // Pointer 0 is the mouse. Touches use 1..N — stick + 技 + 技2 + ATK + E need five.
+    activePointers: 6,
   },
   physics: {
     default: 'arcade',
