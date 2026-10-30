@@ -80,16 +80,17 @@ export class TouchControls {
     anchor: (w: number, h: number) => { x: number; y: number };
   }[] = [];
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, opts?: { mode?: 'full' | 'hub' }) {
     this.scene = scene;
     this.enabled = isTouchCapable(scene);
     if (!this.enabled) return;
 
+    const mode = opts?.mode ?? 'full';
     this.baseRadius = 36;
     this.maxTravel = 28;
 
     // Invisible left-half capture zone — first touch here = stick origin.
-    // Right half is reserved for ATK／技／包／E so those buttons keep priority.
+    // Right half is reserved for action buttons so those keep priority.
     this.stickZone = scene.add.zone(0, 0, 1, 1);
     this.stickZone.setScrollFactor(0);
     this.stickZone.setDepth(UI_DEPTH - 1);
@@ -113,14 +114,19 @@ export class TouchControls {
     this.thumb.setVisible(false);
     this.thumb.disableInteractive();
 
-    this.makeButton((w, h) => ({ x: w - 48, y: h - 58 }), 30, '攻擊', 12, 0xb42323, 'attack', 46);
-    this.makeButton((w, h) => ({ x: w - 112, y: h - 42 }), 24, 'E', 14, 0xc4922a, 'interact', 36);
-    // Above E so it does not cover ATK / E / R / ☰.
-    this.makeButton((w, h) => ({ x: w - 112, y: h - 90 }), 22, '技', 14, 0x4a3aa8, 'skill', 30);
-    this.makeButton((w, _h) => ({ x: w - 68, y: 22 }), 18, 'R', 12, 0x163044, 'restart', 28);
-    this.makeButton((w, _h) => ({ x: w - 24, y: 22 }), 18, '☰', 14, 0x163044, 'menu', 28);
-    // Inventory / equipment (left of R so it stays clear of ATK / E / 技).
-    this.makeButton((w, _h) => ({ x: w - 112, y: 22 }), 18, '包', 11, 0x2a4a3a, 'inventory', 28);
+    if (mode === 'hub') {
+      // Stick + E only — no combat / inventory chrome in the castle hub.
+      this.makeButton((w, h) => ({ x: w - 48, y: h - 58 }), 28, 'E', 16, 0xc4922a, 'interact', 40);
+    } else {
+      this.makeButton((w, h) => ({ x: w - 48, y: h - 58 }), 30, '攻擊', 12, 0xb42323, 'attack', 46);
+      this.makeButton((w, h) => ({ x: w - 112, y: h - 42 }), 24, 'E', 14, 0xc4922a, 'interact', 36);
+      // Above E so it does not cover ATK / E / R / ☰.
+      this.makeButton((w, h) => ({ x: w - 112, y: h - 90 }), 22, '技', 14, 0x4a3aa8, 'skill', 30);
+      this.makeButton((w, _h) => ({ x: w - 68, y: 22 }), 18, 'R', 12, 0x163044, 'restart', 28);
+      this.makeButton((w, _h) => ({ x: w - 24, y: 22 }), 18, '☰', 14, 0x163044, 'menu', 28);
+      // Inventory / equipment (left of R so it stays clear of ATK / E / 技).
+      this.makeButton((w, _h) => ({ x: w - 112, y: 22 }), 18, '包', 11, 0x2a4a3a, 'inventory', 28);
+    }
     this.layout();
   }
 
