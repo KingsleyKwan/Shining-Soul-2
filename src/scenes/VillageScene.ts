@@ -54,6 +54,8 @@ export class VillageScene extends Phaser.Scene {
   private dialogueBody?: Phaser.GameObjects.Text;
   private activeNpc: NpcKind = null;
   private goblinCleared = false;
+  /** Stage 3 is open once stage 2 has been cleared. */
+  private shrineUnlocked = false;
   private heroId: HeroId = 'eric';
   private audio!: GameAudio;
 
@@ -81,6 +83,7 @@ export class VillageScene extends Phaser.Scene {
     const saved = SaveManager.load();
     const flags = SaveManager.getFlags(saved);
     this.goblinCleared = flags.goblinCleared;
+    this.shrineUnlocked = SaveManager.getUnlockedStages(saved).includes(3);
     const regHero = this.registry.get(SELECTED_HERO_KEY);
     this.heroId = SaveManager.isHeroId(regHero)
       ? regHero
@@ -532,7 +535,7 @@ export class VillageScene extends Phaser.Scene {
         y: L.northGate.y + 16,
         radius: 48,
         name: '北門',
-        pill: '出發 · 哥不林要塞',
+        pill: '出發 · 哥布林要塞',
         pillFill: 0x2e5a30,
         pillStroke: 0xb6f0a0,
         onInteract: () => {
@@ -593,7 +596,11 @@ export class VillageScene extends Phaser.Scene {
       .text(
         w / 2,
         44,
-        this.goblinCleared ? '要塞已平定 · 國王等候回報' : '國王委託 · 調查哥不林要塞',
+        this.shrineUnlocked
+          ? '荒廢神殿已開啟 · 路牌可再出發'
+          : this.goblinCleared
+            ? '要塞已平定 · 深層迴廊已開啟'
+            : '國王委託 · 調查哥布林要塞',
         {
           fontFamily: 'monospace',
           fontSize: '10px',
@@ -811,16 +818,18 @@ export class VillageScene extends Phaser.Scene {
     if (kind === 'king') {
       this.dialogueSpeaker.setText('國王馬歇爾');
       this.dialogueBody.setText(
-        this.goblinCleared
-          ? '你已討伐蓋利隊長，不負所託！哥不林要塞暫告平定。「深層迴廊」的入口亦已開啟——若有餘力，可再探查。'
-          : '城外哥不林異常活躍，恐怕與帝斯哈多有關。請前往「哥不林要塞」，查明並擊破其首領蓋利隊長。',
+        this.shrineUnlocked
+          ? '深層迴廊亦已探明。城外「荒廢神殿」的入口現已開啟——可從路牌再出發。'
+          : this.goblinCleared
+            ? '你已討伐蓋利隊長，不負所託！哥布林要塞暫告平定。「深層迴廊」的入口亦已開啟——若有餘力，可再探查。'
+            : '城外哥布林異常活躍，恐怕與帝斯哈多有關。請前往「哥布林要塞」，查明並擊破其首領蓋利隊長。',
       );
     } else {
       this.dialogueSpeaker.setText('紅鞋少女');
       this.dialogueBody.setText(
         this.goblinCleared
           ? '聽說要塞裡有雙紅鞋子……如果你找到了，可以拿來給我嗎？（尚未實作掉落，之後再接）'
-          : '我最喜歡紅鞋子了！聽說哥不林要塞某處藏著一雙……你出城的時候，幫我留意一下好嗎？',
+          : '我最喜歡紅鞋子了！聽說哥布林要塞某處藏著一雙……你出城的時候，幫我留意一下好嗎？',
       );
     }
     this.dialogueBox.setVisible(true);

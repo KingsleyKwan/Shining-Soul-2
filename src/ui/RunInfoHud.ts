@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { RoomId } from '../systems/MapGenerator';
+import { ROOM_IDS, type RoomId } from '../systems/MapGenerator';
 import { Inventory } from '../systems/Inventory';
 
 /** Screen-space rect of one dungeon room (world pixels, same size per room). */
@@ -12,17 +12,20 @@ export type RunInfoMap = {
   cleared: ReadonlySet<RoomId>;
   /** Boss has fallen — the arena node reads as cleared and keeps its mark. */
   bossDown: boolean;
-  /** Warm fort vs cold corridor, so node colors follow the stage. */
-  cold: boolean;
+  /** Node colors follow the stage palette. */
+  tone: RunInfoTone;
 };
 
-const ROOM_IDS: readonly RoomId[] = ['a', 'c', 'b', 'boss'];
+export type RunInfoTone = 'warm' | 'cold' | 'ember';
 
 /** One-character marks. Full names stay on the room HUD. */
 const ROOM_MARK: Record<RoomId, string> = {
   a: '入',
   c: '廊',
+  d: '戰',
+  e: '深',
   b: '箱',
+  f: '支',
   boss: '王',
 };
 
@@ -33,7 +36,7 @@ const GEAR_EMPTY = '「空」';
 const NAME_MAX = 6;
 
 /**
- * Always-on stage HUD: a four-room minimap and a compact gear summary.
+ * Always-on stage HUD: a seven-room minimap and a compact gear summary.
  * Scroll-fixed, not interactive, so it never steals the stick or 包／R／☰.
  *
  * Minimap sits top-center, clear of the touch cluster at y≈22 on the right.
@@ -99,7 +102,7 @@ export class RunInfoHud {
     g.clear();
     g.fillStyle(0x0c1016, 0.78);
     g.fillRoundedRect(ox.x, ox.y, MAP_W, MAP_H, 3);
-    g.lineStyle(1, view.cold ? 0x7a90c0 : 0x9aaa78, 0.55);
+    g.lineStyle(1, toneFrame(view.tone), 0.55);
     g.strokeRoundedRect(ox.x, ox.y, MAP_W, MAP_H, 3);
 
     const layout = layoutNodes(view.rooms, ox.x, ox.y);
@@ -112,7 +115,7 @@ export class RunInfoHud {
         const na = layout[a];
         const nb = layout[b];
         const bothSeen = view.explored.has(a) && view.explored.has(b);
-        g.lineStyle(2, bothSeen ? (view.cold ? 0x9ec0e8 : 0xc6d898) : 0x3a4454, 0.95);
+        g.lineStyle(2, bothSeen ? toneLink(view.tone) : 0x3a4454, 0.95);
         g.lineBetween(na.cx, na.cy, nb.cx, nb.cy);
       }
     }
@@ -122,7 +125,7 @@ export class RunInfoHud {
       const seen = view.explored.has(id);
       const cleared = id === 'boss' ? view.bossDown : view.cleared.has(id);
       const current = id === view.current;
-      const fill = nodeFill(id, seen, cleared, current, view.cold);
+      const fill = nodeFill(id, seen, cleared, current, view.tone);
       g.fillStyle(fill, seen ? 0.95 : 0.9);
       g.fillRect(n.x, n.y, n.w, n.h);
       if (current) {
@@ -189,8 +192,8 @@ function gearOrigin(height: number, touch: boolean): { x: number; y: number } {
     // Bottom-left, above the thumb zone. Attack buttons live on the right.
     return { x: 6, y: height - 132 };
   }
-  // Under the mute line (y≈52, one line). Stays left of the top-center minimap.
-  return { x: 6, y: 76 };
+  // Under the mute line (y≈74). EXP + 技2 sit above it. Stays left of the minimap.
+  return { x: 6, y: 96 };
 }
 
 type NodeBox = { x: number; y: number; w: number; h: number; cx: number; cy: number };
@@ -240,23 +243,37 @@ function roomsTouch(a: RunInfoRoomRect, b: RunInfoRoomRect): boolean {
   return (dx === a.w && dy === 0) || (dy === a.h && dx === 0);
 }
 
+function toneFrame(tone: RunInfoTone): number {
+  if (tone === 'cold') return 0x7a90c0;
+  if (tone === 'ember') return 0xc07868;
+  return 0x9aaa78;
+}
+
+function toneLink(tone: RunInfoTone): number {
+  if (tone === 'cold') return 0x9ec0e8;
+  if (tone === 'ember') return 0xf0b0a0;
+  return 0xc6d898;
+}
+
 function nodeFill(
   id: RoomId,
   seen: boolean,
   cleared: boolean,
   current: boolean,
-  cold: boolean,
+  tone: RunInfoTone,
 ): number {
+  const cold = tone === 'cold';
+  const ember = tone === 'ember';
   if (id === 'boss') {
-    if (!seen) return 0x3a2434;
+    if (!seen) return ember ? 0x3a201c : 0x3a2434;
     if (cleared) return 0x6aaa78;
-    if (current) return cold ? 0xffb0c8 : 0xff8898;
-    return cold ? 0x8a3868 : 0xa04858;
+    if (current) return ember ? 0xffb090 : cold ? 0xffb0c8 : 0xff8898;
+    return ember ? 0xa84838 : cold ? 0x8a3868 : 0xa04858;
   }
-  if (!seen) return 0x242a32;
-  if (current) return cold ? 0xd2e6ff : 0xd4ec86;
-  if (cleared) return cold ? 0x5a9a78 : 0x6aaa58;
-  return cold ? 0x3a6898 : 0x4e7a3c;
+  if (!seen) return ember ? 0x2a2024 : 0x242a32;
+  if (current) return ember ? 0xffd0c0 : cold ? 0xd2e6ff : 0xd4ec86;
+  if (cleared) return ember ? 0xc06058 : cold ? 0x5a9a78 : 0x6aaa58;
+  return ember ? 0x8a4038 : cold ? 0x3a6898 : 0x4e7a3c;
 }
 
 function drawDiamond(g: Phaser.GameObjects.Graphics, cx: number, cy: number, color: number): void {

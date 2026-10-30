@@ -16,7 +16,16 @@ import { formatItemToast, rollItem } from '../data/loot/roll';
 import { RARITY_COLOR, rarityTagZh } from '../data/loot/types';
 import { HitFeedback } from '../systems/HitFeedback';
 import { Inventory, type EquipSlot } from '../systems/Inventory';
-import { generateDungeon } from '../systems/MapGenerator';
+import { generateDungeon, ROOM_IDS, type RoomId } from '../systems/MapGenerator';
+import {
+  EXP_BOSS,
+  EXP_PASTE,
+  EXP_ROOM,
+  MAX_LEVEL,
+  SECOND_SKILL_LEVEL,
+  expToNext,
+  levelAtkBonus,
+} from '../systems/Progression';
 import * as SaveManager from '../systems/SaveManager';
 import { InputState } from '../input/InputState';
 import { TouchControls } from '../ui/TouchControls';
@@ -29,23 +38,33 @@ import { hideLootToastDom, showLootToastDom } from '../ui/LootToastDom';
 /** Anything the player slash can damage. */
 type Hostile = Enemy | Boss;
 
-/** a entry, c combat corridor, b chest, boss arena. */
-type RoomId = 'a' | 'c' | 'b' | 'boss';
-
-const ROOM_ORDER: RoomId[] = ['a', 'c', 'b', 'boss'];
-
 const ROOM_LABELS: Record<StageId, Record<RoomId, string>> = {
   1: {
     a: '要塞入口',
-    c: '哥不林迴廊',
+    c: '哥布林迴廊',
+    d: '內城戰壕',
+    e: '隊長前廳',
     b: '寶箱房',
+    f: '側翼儲藏',
     boss: '蓋利隊長 · 競技場',
   },
   2: {
     a: '深層入口',
     c: '寒迴廊',
+    d: '霜廊',
+    e: '深淵前廳',
     b: '寶箱房',
+    f: '岔路',
     boss: '深淵競技場',
+  },
+  3: {
+    a: '神殿入口',
+    c: '灰迴廊',
+    d: '祭壇前廳',
+    e: '殘柱之間',
+    b: '寶箱房',
+    f: '側殿',
+    boss: '荒神競技場',
   },
 };
 
@@ -55,7 +74,10 @@ const ROOM_LABELS: Record<StageId, Record<RoomId, string>> = {
 const PASTE_HP: Record<RoomId, number> = {
   a: 2,
   c: 3,
+  d: 3,
+  e: 4,
   b: 2,
+  f: 2,
   boss: 3,
 };
 
@@ -124,6 +146,19 @@ const DECOR_THEME: Record<StageId, DecorTheme> = {
     banner: 0x3048a8,
     pole: 0x1c2838,
   },
+  3: {
+    shadow: 0x14080c,
+    skirt: 0xf0c0b0,
+    pattern: 0x3a1818,
+    patternAlt: 0xffe0d0,
+    flame: 0xff6030,
+    flameCore: 0xffe0a0,
+    stone: 0x8a5048,
+    wood: 0x6a3028,
+    woodDark: 0x3a1814,
+    banner: 0xa03028,
+    pole: 0x4a2820,
+  },
 };
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -139,7 +174,7 @@ type DoorSpawn = {
 };
 
 function isRoomId(value: string | undefined): value is RoomId {
-  return value === 'a' || value === 'c' || value === 'b' || value === 'boss';
+  return !!value && (ROOM_IDS as readonly string[]).includes(value);
 }
 
 /** New layout every create (new game, restart, stage-clear 重新開始). */
@@ -151,7 +186,7 @@ function rollDungeonSeed(): number {
 
 /**
  * One-stage dungeon. Each run stamps a new connected room graph
- * (entry, combat, chest, boss) into Tiled JSON and clamps the camera per room.
+ * (entry, halls, chest, side branch, boss) into Tiled JSON and clamps the camera per room.
  * Door objects teleport with a short fade. The player is soft-clamped to the
  * current room so a doorway cannot be walked through without that teleport.
  * Pastes and the boss simulate only in their own room. After Captain Gully falls,
@@ -167,10 +202,15 @@ export class GameScene extends Phaser.Scene {
   private inputState!: InputState;
   private leaving = false;
   private hpHud!: Phaser.GameObjects.Text;
+  private expHud!: Phaser.GameObjects.Text;
   private skillHud!: Phaser.GameObjects.Text;
+  private skill2Hud!: Phaser.GameObjects.Text;
   private roomHud!: Phaser.GameObjects.Text;
   private goldHud!: Phaser.GameObjects.Text;
   private gold = 0;
+  /** Persistent level. Death does not reset it. A new game starts at 1 / 0. */
+  private runLevel = 1;
+  private runExp = 0;
   private inventory = new Inventory();
   private runInfo?: RunInfoHud;
   private inventoryPanel!: InventoryPanel;
@@ -244,6 +284,8 @@ export class GameScene extends Phaser.Scene {
     this.exploredRooms.clear();
     this.chestOpened = false;
     this.gold = 0;
+    this.runLevel = 1;
+    this.runExp = 0;
     this.inventory = new Inventory();
     this.inventoryOpen = false;
     this.leaving = false;
@@ -310,6 +352,7 @@ export class GameScene extends Phaser.Scene {
     // Brief spawn grace so a nearby Paste cannot delete a fresh run.
     this.player.grantSpawnGrace(2000);
     this.applyLoadedGear();
+    this.player.setRunLevel(this.runLevel);
 
     this.enemies = this.add.group({ runChildUpdate: true });
     // Physics group so slash / charge / Prim bolt / Raizen flurry overlap can call takeDamage.
@@ -328,6 +371,7 @@ export class GameScene extends Phaser.Scene {
       this.boss.setTarget(this.player);
       this.boss.setPathfinder(this.pathfinder);
       this.boss.setOnDefeated(() => this.showBossVictory());
+      this.boss.setOnKilled(() => this.gainExp(EXP_BOSS));
       this.boss.setOnLootDrop((dx, dy) => this.tryEnemyDrop(dx, dy, 0.55));
       // Hidden until applyRoomCamera — create always starts in Entry.
       this.boss.setRoomPresent(false);
@@ -352,8 +396,8 @@ export class GameScene extends Phaser.Scene {
     this.inputState = new InputState(this);
 
     const helpLine = this.touch.enabled
-      ? '浮動搖桿 · 長按攻擊 · 技 · E · 包 · R · ☰'
-      : 'WASD · 長按 Space/Z · Q · E 寶箱 · I/Tab 包 · M · R · Esc';
+      ? '浮動搖桿 · 長按攻擊 · 技 · 技2 · E · 包 · R · ☰'
+      : 'WASD · 長按 Space/Z · Q · F 技2 · E 寶箱 · I/Tab 包 · M · R · Esc';
     const help = this.add
       .text(this.scale.width / 2, this.scale.height - 4, helpLine, {
         fontFamily: 'monospace',
@@ -387,8 +431,30 @@ export class GameScene extends Phaser.Scene {
       .setDepth(100);
     this.refreshHpHud(this.player.hp, this.player.maxHp);
 
+    this.expHud = this.add
+      .text(6, 14, '', {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#d8f0c0',
+        backgroundColor: '#00000099',
+        padding: hudPad,
+      })
+      .setScrollFactor(0)
+      .setDepth(100);
+    this.refreshExpHud();
+
     this.skillHud = this.add
-      .text(6, 16, '', {
+      .text(6, 26, '', {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#ffffff',
+        backgroundColor: '#00000099',
+        padding: hudPad,
+      })
+      .setScrollFactor(0)
+      .setDepth(100);
+    this.skill2Hud = this.add
+      .text(6, 38, '', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#ffffff',
@@ -400,7 +466,7 @@ export class GameScene extends Phaser.Scene {
     this.refreshSkillHud();
 
     this.roomHud = this.add
-      .text(6, 28, '', {
+      .text(6, 50, '', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: stageDef.visual.nameplateColor,
@@ -412,7 +478,7 @@ export class GameScene extends Phaser.Scene {
     this.refreshRoomHud();
 
     this.goldHud = this.add
-      .text(6, 40, '', {
+      .text(6, 62, '', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#ffe066',
@@ -465,7 +531,7 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     this.muteHud = this.add
-      .text(6, 52, '', {
+      .text(6, 74, '', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#aaaacc',
@@ -479,7 +545,9 @@ export class GameScene extends Phaser.Scene {
     // Fixed HUD + touch stay on uiCam (zoom 1); main may cover-zoom the world.
     this.promoteUi(
       this.hpHud,
+      this.expHud,
       this.skillHud,
+      this.skill2Hud,
       this.roomHud,
       this.goldHud,
       this.muteHud,
@@ -508,6 +576,8 @@ export class GameScene extends Phaser.Scene {
       const saved = SaveManager.load();
       if (!saved) return;
       this.gold = saved.gold;
+      this.runLevel = saved.level;
+      this.runExp = saved.exp;
       this.inventory = Inventory.fromJSON({
         bag: saved.bag,
         equipped: saved.equipped,
@@ -519,6 +589,8 @@ export class GameScene extends Phaser.Scene {
     } catch (err) {
       console.warn('[SS2] loadPersistedState skipped', err);
       this.gold = 0;
+      this.runLevel = 1;
+      this.runExp = 0;
       this.inventory = new Inventory();
     }
   }
@@ -547,6 +619,8 @@ export class GameScene extends Phaser.Scene {
           bag: snap.bag,
           equipped: snap.equipped,
           unlockedStages: SaveManager.getUnlockedStages(existing),
+          level: this.runLevel,
+          exp: this.runExp,
         }),
       );
     } catch (err) {
@@ -732,6 +806,7 @@ export class GameScene extends Phaser.Scene {
     enemy.setTarget(this.player);
     enemy.setPathfinder(this.pathfinder);
     enemy.setOnLootDrop((dx, dy) => this.tryEnemyDrop(dx, dy, 0.28));
+    enemy.setOnKilled(() => this.gainExp(EXP_PASTE));
     enemy.setRoomPresent(room === this.currentRoom);
     this.enemies.add(enemy);
     this.hostiles.add(enemy);
@@ -887,7 +962,7 @@ export class GameScene extends Phaser.Scene {
       explored: this.exploredRooms,
       cleared: this.clearedRooms,
       bossDown: this.bossDefeated,
-      cold: this.runStage === 2,
+      tone: this.runStage === 2 ? 'cold' : this.runStage === 3 ? 'ember' : 'warm',
     });
     hud.syncGear(this.inventory);
   }
@@ -1148,7 +1223,7 @@ export class GameScene extends Phaser.Scene {
     const floor = this.add.graphics().setDepth(0.6);
     const props = this.add.graphics().setDepth(1.4);
     const sides = this.roomDoorSides();
-    for (const id of ROOM_ORDER) {
+    for (const id of ROOM_IDS) {
       const rng = mulberry32((this.runSeed ^ decorSalt(id)) >>> 0);
       paintRoomDecor(floor, props, id, this.rooms[id], theme, sides[id], rng);
     }
@@ -1157,11 +1232,11 @@ export class GameScene extends Phaser.Scene {
   /** Which walls of each room are a doorway, so skirting does not seal the opening. */
   private roomDoorSides(): Record<RoomId, DoorSides> {
     const out = {} as Record<RoomId, DoorSides>;
-    for (const id of ROOM_ORDER) out[id] = { n: false, e: false, s: false, w: false };
-    for (let i = 0; i < ROOM_ORDER.length; i++) {
-      for (let j = i + 1; j < ROOM_ORDER.length; j++) {
-        const a = ROOM_ORDER[i]!;
-        const b = ROOM_ORDER[j]!;
+    for (const id of ROOM_IDS) out[id] = { n: false, e: false, s: false, w: false };
+    for (let i = 0; i < ROOM_IDS.length; i++) {
+      for (let j = i + 1; j < ROOM_IDS.length; j++) {
+        const a = ROOM_IDS[i]!;
+        const b = ROOM_IDS[j]!;
         const ra = this.rooms[a];
         const rb = this.rooms[b];
         const dx = rb.x - ra.x;
@@ -1225,6 +1300,9 @@ export class GameScene extends Phaser.Scene {
     if (!any) return;
     this.clearedRooms.add(room);
     this.audio?.roomClear();
+    const before = this.runLevel;
+    this.gainExp(EXP_ROOM);
+    if (this.runLevel === before) this.showLootToast(`清除 · 經驗 +${EXP_ROOM}`);
     this.refreshRunInfo();
   }
 
@@ -1319,15 +1397,74 @@ export class GameScene extends Phaser.Scene {
     body.prev.set(body.position.x, body.position.y);
   }
 
+  private refreshExpHud(): void {
+    const hud = this.expHud;
+    if (!hud?.active) return;
+    const need = expToNext(this.runLevel);
+    const text = `Lv ${this.runLevel}  經驗 ${this.runExp}/${need}`;
+    if (hud.text !== text) hud.setText(text);
+  }
+
+  /**
+   * Kill / room / boss EXP. Level-up raises max HP (and current HP by the same
+   * amount) and a little attack. Writes the save so death and stage changes keep it.
+   */
+  private gainExp(amount: number): void {
+    if (amount <= 0 || this.leaving) return;
+    const prev = this.runLevel;
+    this.runExp += amount;
+    let steps = 0;
+    while (this.runLevel < MAX_LEVEL && this.runExp >= expToNext(this.runLevel)) {
+      this.runExp -= expToNext(this.runLevel);
+      this.runLevel += 1;
+      steps += 1;
+    }
+    if (this.runLevel >= MAX_LEVEL) {
+      this.runExp = Math.min(this.runExp, expToNext(this.runLevel) - 1);
+    }
+    if (steps > 0 && this.player) {
+      this.player.setRunLevel(this.runLevel);
+      const atk = levelAtkBonus(this.runLevel) - levelAtkBonus(prev);
+      const parts = [`升級 Lv${this.runLevel}`, `生命+${steps}`];
+      if (atk > 0) parts.push(`攻擊+${atk}`);
+      if (prev < SECOND_SKILL_LEVEL && this.runLevel >= SECOND_SKILL_LEVEL) {
+        parts.push('技2 已解鎖');
+      }
+      this.showLootToast(parts.join(' · '));
+    }
+    this.refreshExpHud();
+    this.refreshSkillHud();
+    this.persistSave();
+  }
+
   private refreshSkillHud(): void {
     const hud = this.skillHud;
+    if (hud?.active && this.player?.active) {
+      const skill = this.player.getActiveSkill();
+      const rem = this.player.getSkillCooldownRemainingMs();
+      const status = rem <= 0 ? '就緒' : `${(Math.ceil(rem / 100) / 10).toFixed(1)}s`;
+      const text = `技 ${skill.labelZh} [Q] ${status}`;
+      if (hud.text !== text) hud.setText(text);
+      hud.setTint(rem <= 0 ? 0xffe8a0 : 0xa8b0c4);
+    }
+    this.refreshSkill2Hud();
+  }
+
+  private refreshSkill2Hud(): void {
+    const hud = this.skill2Hud;
     if (!hud?.active || !this.player?.active) return;
-    const skill = this.player.getActiveSkill();
-    const rem = this.player.getSkillCooldownRemainingMs();
+    const skill = this.player.getSecondSkill();
+    if (!this.player.isSecondSkillUnlocked()) {
+      const text = `技2 ${skill.labelZh} [F] Lv${SECOND_SKILL_LEVEL}解鎖`;
+      if (hud.text !== text) hud.setText(text);
+      hud.setTint(0x889098);
+      return;
+    }
+    const rem = this.player.getSkill2CooldownRemainingMs();
     const status = rem <= 0 ? '就緒' : `${(Math.ceil(rem / 100) / 10).toFixed(1)}s`;
-    const text = `技 ${skill.labelZh} [Q] ${status}`;
+    const text = `技2 ${skill.labelZh} [F] ${status}`;
     if (hud.text !== text) hud.setText(text);
-    hud.setTint(rem <= 0 ? 0xffe8a0 : 0xa8b0c4);
+    hud.setTint(rem <= 0 ? 0xe0c0ff : 0xa8b0c4);
   }
 
   private refreshHpHud(hp: number, max: number): void {
@@ -1357,7 +1494,7 @@ export class GameScene extends Phaser.Scene {
     this.activateExit();
     this.refreshRoomHud();
     this.refreshRunInfo();
-    this.showLootToast('蓋利隊長已擊破 · 出口已開啟');
+    this.showLootToast(`蓋利隊長已擊破 · 經驗 +${EXP_BOSS} · 出口已開啟`);
   }
 
   /** Glowing exit. Overlap (only after the boss falls) opens the stage-clear panel. */
@@ -1449,6 +1586,8 @@ export class GameScene extends Phaser.Scene {
         bag: snap.bag,
         equipped: snap.equipped,
         unlockedStages: SaveManager.getUnlockedStages(existing),
+        level: this.runLevel,
+        exp: this.runExp,
       });
       SaveManager.save(SaveManager.unlockStage(base, stageId));
     } catch (err) {
@@ -1470,6 +1609,8 @@ export class GameScene extends Phaser.Scene {
           bag: snap.bag,
           equipped: snap.equipped,
           unlockedStages: SaveManager.getUnlockedStages(existing),
+          level: this.runLevel,
+          exp: this.runExp,
           goblinCleared: true,
           villageVisited: true,
           seenIntro: true,
@@ -1503,6 +1644,8 @@ export class GameScene extends Phaser.Scene {
     if (this.gameOver) return;
     this.gameOver = true;
     this.leaving = false;
+    // Death keeps level and EXP. A new game is the only reset.
+    this.persistSave();
     this.setInventoryOpen(false);
     // Death in Entry must not leave Captain Gully's sprite or HP plate on screen.
     this.syncHostileRooms();
@@ -1567,7 +1710,10 @@ export class GameScene extends Phaser.Scene {
     const keyFor: Record<string, RoomId> = {
       roomA: 'a',
       roomC: 'c',
+      roomD: 'd',
+      roomE: 'e',
       roomB: 'b',
+      roomF: 'f',
       roomBoss: 'boss',
     };
     for (const p of this.mapPropList(map)) {
@@ -1577,7 +1723,7 @@ export class GameScene extends Phaser.Scene {
       if (rect) found[id] = rect;
     }
     const rooms = {} as Record<RoomId, Rect>;
-    for (const id of ROOM_ORDER) {
+    for (const id of ROOM_IDS) {
       const rect = found[id];
       if (!rect) throw new Error(`Dungeon map is missing room rect ${id}`);
       rooms[id] = rect;
@@ -1594,7 +1740,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private roomAt(x: number, y: number): RoomId | null {
-    for (const id of ROOM_ORDER) {
+    for (const id of ROOM_IDS) {
       const r = this.rooms[id];
       if (!r) continue;
       if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return id;
@@ -1606,10 +1752,8 @@ export class GameScene extends Phaser.Scene {
     const tagged = this.propString(o, 'room');
     if (isRoomId(tagged)) return tagged;
     const name = o.name ?? '';
-    if (name.startsWith('enemy_boss') || name.includes('_boss')) return 'boss';
-    if (name.startsWith('enemy_b')) return 'b';
-    if (name.startsWith('enemy_c')) return 'c';
-    if (name.startsWith('enemy_a')) return 'a';
+    const taggedName = /^enemy_([a-z]+)\d+$/.exec(name);
+    if (taggedName && isRoomId(taggedName[1])) return taggedName[1];
     return this.roomAt(at.x, at.y) ?? 'a';
   }
 
@@ -1708,10 +1852,22 @@ export class GameScene extends Phaser.Scene {
 }
 
 function decorSalt(id: RoomId): number {
-  if (id === 'a') return 0x41a1;
-  if (id === 'c') return 0xc0c0;
-  if (id === 'b') return 0xb0b1;
-  return 0xb055;
+  switch (id) {
+    case 'a':
+      return 0x41a1;
+    case 'c':
+      return 0xc0c0;
+    case 'd':
+      return 0xd1d0;
+    case 'e':
+      return 0xe1e0;
+    case 'b':
+      return 0xb0b1;
+    case 'f':
+      return 0xf1f0;
+    case 'boss':
+      return 0xb055;
+  }
 }
 
 function mulberry32(seed: number): () => number {

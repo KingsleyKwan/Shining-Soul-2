@@ -9,7 +9,7 @@ import {
 import * as SaveManager from '../systems/SaveManager';
 
 /**
- * Stage select after hero pick. 1/2 or click → GameScene with stage id.
+ * Stage select after hero pick. 1/2/3 or click → GameScene with stage id.
  */
 export class StageSelectScene extends Phaser.Scene {
   private selected: StageId = 1;
@@ -53,42 +53,50 @@ export class StageSelectScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const slotW = 180;
-    const gap = 16;
-    const total = STAGES.length * slotW + (STAGES.length - 1) * gap;
+    const n = STAGES.length;
+    const gap = 10;
+    const rowSlot = Math.floor((width - 24 - gap * (n - 1)) / n);
+    const useRow = rowSlot >= 108 || height < 460;
+    const slotW = useRow ? Math.min(156, Math.max(96, rowSlot)) : Math.min(240, width - 36);
+    const slotH = useRow ? 142 : 128;
+    const total = useRow ? n * slotW + (n - 1) * gap : slotW;
     const x0 = (width - total) / 2 + slotW / 2;
-    const y = height / 2 - 8;
+    const y0 = useRow ? height / 2 - 8 : 86;
 
     this.cards = [];
     STAGES.forEach((stage, i) => {
       const locked = !this.unlocked.includes(stage.id);
-      const cx = x0 + i * (slotW + gap);
+      const cx = useRow ? x0 + i * (slotW + gap) : width / 2;
+      const cy = useRow ? y0 : y0 + i * (slotH + 8);
       const bg = this.add
-        .rectangle(0, 0, slotW, 150, locked ? 0x181818 : 0x1e3020, 0.95)
+        .rectangle(0, 0, slotW, slotH, locked ? 0x181818 : 0x1e3020, 0.95)
         .setStrokeStyle(2, locked ? 0x555555 : 0x4a7a4a);
+      const top = -slotH / 2;
       const num = this.add
-        .text(0, -58, `${stage.id}`, {
+        .text(0, top + 18, `${stage.id}`, {
           fontFamily: 'monospace',
           fontSize: '12px',
           color: locked ? '#777777' : '#aad0aa',
         })
         .setOrigin(0.5);
       const label = this.add
-        .text(0, -20, stage.nameZh, {
+        .text(0, top + 42, stage.nameZh, {
           fontFamily: 'monospace',
-          fontSize: '14px',
+          fontSize: slotW < 120 ? '12px' : '14px',
           color: locked ? '#888888' : '#f0fff0',
+          align: 'center',
+          wordWrap: { width: slotW - 12 },
         })
         .setOrigin(0.5);
       const state = this.add
-        .text(0, 10, locked ? '鎖定' : '已解鎖', {
+        .text(0, top + 68, locked ? '鎖定' : '已解鎖', {
           fontFamily: 'monospace',
           fontSize: '11px',
           color: locked ? '#ff8888' : '#6dffa0',
         })
         .setOrigin(0.5);
       const hint = this.add
-        .text(0, 36, locked ? '通關上一關解鎖' : '點選／數字鍵開始', {
+        .text(0, top + 94, locked ? '通關上一關解鎖' : '點選／數字鍵開始', {
           fontFamily: 'monospace',
           fontSize: '9px',
           color: locked ? '#999999' : '#9bbb9b',
@@ -97,7 +105,7 @@ export class StageSelectScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
 
-      const container = this.add.container(cx, y, [bg, num, label, state, hint]);
+      const container = this.add.container(cx, cy, [bg, num, label, state, hint]);
       if (!locked) {
         bg.setInteractive({ useHandCursor: true });
         bg.on('pointerover', () => this.setSelected(stage.id));
@@ -110,7 +118,7 @@ export class StageSelectScene extends Phaser.Scene {
     });
 
     this.add
-      .text(width / 2, height - 54, '1 / 2 · 點選卡片 · Enter / Space 開始', {
+      .text(width / 2, height - 54, '1 / 2 / 3 · 點選卡片 · Enter / Space 開始', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#c8e8c8',
@@ -137,8 +145,10 @@ export class StageSelectScene extends Phaser.Scene {
     const keyboard = this.input.keyboard;
     keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE).on('down', () => this.trySelect(1));
     keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO).on('down', () => this.trySelect(2));
+    keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE).on('down', () => this.trySelect(3));
     keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_ONE).on('down', () => this.trySelect(1));
     keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_TWO).on('down', () => this.trySelect(2));
+    keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_THREE).on('down', () => this.trySelect(3));
     keyboard.on('keydown-ENTER', () => this.confirm());
     keyboard.on('keydown-SPACE', () => this.confirm());
     keyboard.on('keydown-ESC', () => {
