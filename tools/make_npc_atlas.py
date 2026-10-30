@@ -9,8 +9,9 @@ Outputs:
   public/assets/generated/npc-atlas.png
   public/assets/generated/npc-atlas.json
 
-Frames: king_idle_0/1, girl_idle_0/1 (1px bob for a soft idle).
-Style: player-like GBA pixel humanoids (not geometric placeholders).
+Frames: king_idle_0/1, girl_idle_0/1.
+Idle bob shifts content up 1px inside a canvas padded with transparent rows
+above the hair so the crown/hair never clips out of the frame.
 """
 from __future__ import annotations
 
@@ -28,84 +29,90 @@ GIRL = SRC / "npc-girl.png"
 DST_PNG = GEN / "npc-atlas.png"
 DST_JSON = GEN / "npc-atlas.json"
 
-# Player-scale standees (~22x33), purple-crown king + red-dress girl.
+PAD_TOP = 2  # transparent rows above standee; absorbs 1px idle bob
+BOB_PX = 1
+
+# Player-scale standees (~22x33), purple-crown king + red-dress girl (teal scrubbed).
 _KING_PNG_B64 = (
-    "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"
-    "kAAAAABJRU5ErkJggg=="
+    "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"
+    "AAAASUVORK5CYII="
 )
 _GIRL_PNG_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAABMAAAAgCAYAAADwvkPPAAADvUlEQVR4nH2WL7TyPAzGf3BeERlZ"
-    "OTk5iUQir0QikUgkEom8EolEIicnJysrKyPj+omOAd+955bDGWnz50myJwV+WZf2gkD5/SvlNxuA"
-    "xf83RCgCrNsGcEB+GD1iAgR3/7D/EFQoqzYgXr3+tdydmCB5nn0s3xE1QRGE/Vf3pyMB9puOtoFA"
-    "mNOevapQamp/LxFwf8nD6GQquuUUqXRBP1JI2chmH2gAcq57Np2JGs+mLOdok3LKmZiN22GDTxBi"
-    "Ni77FSkb5lUHIKaMvtV2WZEwG5qDiNCsGobbgTgZatMwfO9wHHPIVvWDCkFB0fIPXqjGlFGB6+mL"
-    "ZnMBgXQ/zIk2XxdEoL/sWB+uyGSbvZZhqpngQLwfcIftuSdZntN5JpLMiDmzPt4QYLgdGJMhDoYt"
-    "liKUdatTCOOy7bidt8SYUFWYAgGzfD9vuWxXWEy04b1mk2ZQJeyuqEDbBp6I5yI8bYRF2yiq0B3v"
-    "qAhdqwRCWQiUNihBhT5mEMEeB95pJIA/RXfcIXxdEJwggqqSEixEKJ0q0RwVUBGiOeDY4/h6S6en"
-    "rs8g0KoiUrsaBFJW/rmzGLMVgBCUMRl7FdaqmK64Hw8TT53N6cJNhajCKTtdULLXV8XIn0NDRIp7"
-    "Lm6pPIIWt1hlz8UtFstjuasWs1zMcgmiH+NoJrqKlmHo5wN1oe82b5GUuN6iVKAicH9808iL6P+e"
-    "PxyjnYhucUTECQ5j2738TePNUkSblrZbYW+sX0IdI31fUVmO7I9nxoku6qDu1RFOdtgdTuCOINwe"
-    "VxqaF9GNTNe182zphwGA7E79gONEd5I7wzDOUJsmTBqwbETLcdU8O8Buf+ILoVWprZ8cZHcaEVRg"
-    "4852uwMgCBzXSkNTlhlju11BGvDhjvcDWxFUBEWQ6anUvUaEFTD2A6QRLLHedDhe02y6FvLI0D/Y"
-    "AGEacAIEhCAy79XfsAaG/oHYSLtqEYGleiCbkbKxPz/o/rhHph7QirIR2B2vZHOSOeJa74CAFhHn"
-    "okKjWickL3b6L45TUHLOHM1RDyTSYqaAiBSLDwDiavunI1RoHt+YOevuQCIt4O12EqQIcFNY5/Q+"
-    "fHiOz1m2TN+u+DJQdL6dftzogVBQYzhvAbiPieN1IH5XtO7QHm7Viecf9j9W0InkFsv1tCu1BPfi"
-    "eSiWxxLe+Pjn0mly2NiXIWg5qhQRSh+09EHrmaWi8vMPzAdMEUovUmskYMC3OQ/gjNOpVsWpeBsH"
-    "c1v86kzRH9ECgUhchOmsDo7aDkXnTgL8B1cMHzae1E3aAAAAAElFTkSuQmCC"
+    "iVBORw0KGgoAAAANSUhEUgAAABMAAAAgCAYAAADwvkPPAAADvUlEQVR4nH2WLZTyPBCFHzivGDky"
+    "srKyEolErqxEIpHIlUjkSiQSiaysrIyMjBw5Lp9It8C3ezY9PSU/c3NnJncC/NIu7QWB8vsr5Tcb"
+    "gNX/B0QoAmzbBnBAfhg9YgIEd3+zf+uoUDZtQLyi/tXcnZggeV4w1q+MmqAIwuGj+xNIgMOuo20g"
+    "EBa3F1QVSnXt7yYC7s/+ODmZym4971S6oG8upGxkszc2ADnXMZvnRI3vpKyX3ebFKWdiNm7HHT5T"
+    "iNm4HDakbJjXNQAxZfQltuvKhMXQHESEZtMw3o7E2VCbhvFrj+OYQ7a6PqgQFBQt/+DJakoZFbh+"
+    "ftDsLiCQ7sfF0ebjgggMlz3b4xWZbbPXMMwxExyI9yPu0J8HkuXFne+IJTNizmxPNwQYb0emZIiD"
+    "Yau1CGXb6ryFcek7bueeGBOqOgNV7t/9+7nn0m+wmGjDa8xmH4MqYX9FBdo28M14CcK3jbBqG0UV"
+    "utMdFaFrlUAoK4HSBiWoMMQMItjjyJuMXsXgjjuEjwuCE0RQVVKClQilUyWaowIqQjQHHHucnqd0"
+    "/ur2DAKtKiI1q0EgZeWfO6spWwEIQZmScVBhq4rphvvpOOvU2X1euKkQVfjMTheU7PWoGPm9aIhI"
+    "cc/FLZVH0OIWa99zcYvF8lTuqsUsF7NcguhbOVqErqJlHIdlQl0Yut3LTkrc9iiVqAjcH1808hT6"
+    "vyWuGO0sdIsTIk5wmNruiTeXN0sRbVraboO9qH4NtYwMQ2VlOXI4nZlmuaiDulcgnOywP36CO4Jw"
+    "e1xpaJ5CNzJd1y61ZRhHALI79QHHie4kd8ZxWqg2TZhXwLoRLadN850B9odPPhBalZr6GSC704ig"
+    "Ajt3+n4PQBA4bZWGpqwzRt9vII34eMeHkV4EFUERZP4qdawRYQNMwwhpAktsdx2OVzebroU8MQ4P"
+    "dkCYC5wAASGILGP1N2yBcXggNtFuWkRgrR7IZqRsHM4Puj/ukTkHtKLsBPanK9mcZI641jsgoEXE"
+    "uajQqNYKyVOS/gtwCkrOmZM56oFEWi0SEJFi8QFA3PR/AqFC8/jCzNl2RxJpBS+3kyBFgJvCNqf/"
+    "Wb+UIgDLDO2GDwNFl9vpx40eCAU1xnMPwH1KnK4j8auydYf2eKsgnn/Y/2hBZ5FbLNfPfakhuBfP"
+    "Y7E8lfCixz+bzpXDpqGMQctJpYhQhqBlCFrnLBWVn39g3miKUAYRoJ5+A77MeQBnnE61LpzDt3Mw"
+    "t9WvYIr+2C0QiMRVmOdq4RAcR9ElkwD/ASdFHDayBJxuAAAAAElFTkSuQmCC"
 )
 
 
 def ensure_sources() -> None:
     SRC.mkdir(parents=True, exist_ok=True)
-    if not KING.is_file():
-        KING.write_bytes(base64.b64decode("".join(_KING_PNG_B64.split())))
-    if not GIRL.is_file():
-        GIRL.write_bytes(base64.b64decode("".join(_GIRL_PNG_B64.split())))
-    # Always refresh from embedded so CI matches the committed script.
     KING.write_bytes(base64.b64decode("".join(_KING_PNG_B64.split())))
     GIRL.write_bytes(base64.b64decode("".join(_GIRL_PNG_B64.split())))
 
 
-def bob(im: Image.Image) -> Image.Image:
-    """1px upward content shift for a subtle idle alternate."""
+def pad_standee(im: Image.Image, pad_top: int = PAD_TOP) -> Image.Image:
+    """Add transparent rows above hair so bob travel stays inside the frame."""
     w, h = im.size
+    canvas = Image.new("RGBA", (w, h + pad_top), (0, 0, 0, 0))
+    canvas.paste(im, (0, pad_top), im)
+    return canvas
+
+
+def bob_frame(padded: Image.Image, bob: int = BOB_PX) -> Image.Image:
+    """Shift content up by bob px; top pad absorbs the travel (no clip)."""
+    w, h = padded.size
     canvas = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    canvas.paste(im, (0, -1), im)
+    canvas.paste(padded, (0, -bob), padded)
     return canvas
 
 
 def main() -> None:
     ensure_sources()
-    king = Image.open(KING).convert("RGBA")
-    girl = Image.open(GIRL).convert("RGBA")
+    king = pad_standee(Image.open(KING).convert("RGBA"))
+    girl = pad_standee(Image.open(GIRL).convert("RGBA"))
     frames_imgs = {
         "king_idle_0": king,
-        "king_idle_1": bob(king),
+        "king_idle_1": bob_frame(king),
         "girl_idle_0": girl,
-        "girl_idle_1": bob(girl),
+        "girl_idle_1": bob_frame(girl),
     }
     pad = 2
     total_w = sum(im.width + pad for im in frames_imgs.values()) + pad
@@ -140,7 +147,7 @@ def main() -> None:
     DST_JSON.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     print(
         f"Wrote NPC atlas → {DST_PNG.name} ({atlas.width}x{atlas.height}, "
-        f"{len(frames_meta)} frames)"
+        f"{len(frames_meta)} frames, pad_top={PAD_TOP}, bob={BOB_PX})"
     )
 
 
