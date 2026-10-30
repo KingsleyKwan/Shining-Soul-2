@@ -8,9 +8,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "prebuild": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py && python3 tools/make_ryle_atlas.py && python3 tools/make_dungeon_map.py && python3 tools/scrub_atlases.py",
-    "atlas": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py && python3 tools/make_ryle_atlas.py && python3 tools/make_dungeon_map.py && python3 tools/scrub_atlases.py",
-    "predev": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py && python3 tools/make_ryle_atlas.py && python3 tools/make_dungeon_map.py && python3 tools/scrub_atlases.py"
+    "prebuild": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py && python3 tools/make_ryle_atlas.py && python3 tools/make_dungeon_map.py && python3 tools/scrub_atlases.py && python3 tools/make_npc_atlas.py",
+    "atlas": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py && python3 tools/make_ryle_atlas.py && python3 tools/make_dungeon_map.py && python3 tools/scrub_atlases.py && python3 tools/make_npc_atlas.py",
+    "predev": "python3 tools/extract_eric.py && python3 tools/extract_prim.py && python3 tools/extract_raizen.py && python3 tools/make_ryle_atlas.py && python3 tools/make_dungeon_map.py && python3 tools/scrub_atlases.py && python3 tools/make_npc_atlas.py"
   },
   "dependencies": {
     "phaser": "3.90.0"

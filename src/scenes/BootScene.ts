@@ -11,6 +11,7 @@ import { HERO_ORDER, HEROES } from '../data/players';
  * - Ryle atlas: recolored Claire Starsword hero sheet (same source as eric/prim/raizen),
  *   palette-shifted for the archer. Arrow VFX are procedural.
  * - Captain Gully: darkbolt99 @ The Spriters Resource
+ * - Hub NPCs: original pixel standees packed by make_npc_atlas.py
  * - Map tiles: original placeholders (Spriters has no SS2 tilesets)
  */
 export class BootScene extends Phaser.Scene {
@@ -82,6 +83,7 @@ export class BootScene extends Phaser.Scene {
       'assets/generated/gully-atlas.png',
       'assets/generated/gully-atlas.json',
     );
+    this.load.atlas('npc', 'assets/generated/npc-atlas.png', 'assets/generated/npc-atlas.json');
     this.load.image('dungeon-tiles', 'assets/maps/dungeon-tiles.png');
     GameAudio.preload(this);
   }
@@ -100,6 +102,7 @@ export class BootScene extends Phaser.Scene {
 
     this.createHeroAnimations();
     this.createEnemyAnimations();
+    this.createNpcAnimations();
     this.scene.start('SelectScene');
   }
 
@@ -228,6 +231,31 @@ export class BootScene extends Phaser.Scene {
         frames: [{ key: 'gully', frame: 'hurt_0' }],
         frameRate: 1,
         repeat: 0,
+      });
+    }
+  }
+
+  private createNpcAnimations(): void {
+    if (!this.anims.exists('npc-king-idle')) {
+      this.anims.create({
+        key: 'npc-king-idle',
+        frames: [
+          { key: 'npc', frame: 'king_idle_0' },
+          { key: 'npc', frame: 'king_idle_1' },
+        ],
+        frameRate: 3,
+        repeat: -1,
+      });
+    }
+    if (!this.anims.exists('npc-girl-idle')) {
+      this.anims.create({
+        key: 'npc-girl-idle',
+        frames: [
+          { key: 'npc', frame: 'girl_idle_0' },
+          { key: 'npc', frame: 'girl_idle_1' },
+        ],
+        frameRate: 3,
+        repeat: -1,
       });
     }
   }

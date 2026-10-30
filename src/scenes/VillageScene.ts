@@ -397,10 +397,18 @@ export class VillageScene extends Phaser.Scene {
   }
 
   private placeNpcs(L: HubLayout): void {
-    // King — purple body, blonde head (geometric)
-    this.drawNpcFigure(L.king.x, L.king.y, 0x6a3a8a, 0xf0d070, 0x3a2040);
-    // Girl — red outfit
-    this.drawNpcFigure(L.girl.x, L.girl.y, 0xc43b4a, 0x2a1a18, 0xb42030, true);
+    const king = this.add.sprite(L.king.x, L.king.y, 'npc', 'king_idle_0');
+    king.setScale(PLAYER_SCALE);
+    king.setOrigin(0.5, 0.85);
+    king.setDepth(4);
+    king.play('npc-king-idle');
+
+    const girl = this.add.sprite(L.girl.x, L.girl.y, 'npc', 'girl_idle_0');
+    girl.setScale(PLAYER_SCALE);
+    girl.setOrigin(0.5, 0.85);
+    girl.setDepth(4);
+    girl.play('npc-girl-idle');
+
     // Signpost
     const sx = L.signpost.x;
     const sy = L.signpost.y;
@@ -422,29 +430,6 @@ export class VillageScene extends Phaser.Scene {
     // Green flag tip
     g.fillStyle(0x4caf50, 1);
     g.fillTriangle(sx + 16, sy - 22, sx + 28, sy - 14, sx + 16, sy - 6);
-  }
-
-  private drawNpcFigure(
-    x: number,
-    y: number,
-    body: number,
-    head: number,
-    accent: number,
-    redShoes = false,
-  ): void {
-    const g = this.add.graphics().setDepth(4);
-    g.fillStyle(head, 1);
-    g.fillCircle(x, y - 16, 6);
-    g.fillStyle(body, 1);
-    g.fillRect(x - 7, y - 10, 14, 16);
-    g.fillStyle(accent, 1);
-    g.fillRect(x - 7, y + 6, 6, 5);
-    g.fillRect(x + 1, y + 6, 6, 5);
-    if (redShoes) {
-      g.fillStyle(0xb42030, 1);
-      g.fillRect(x - 7, y + 9, 6, 3);
-      g.fillRect(x + 1, y + 9, 6, 3);
-    }
   }
 
   private placePlayer(L: HubLayout): void {
